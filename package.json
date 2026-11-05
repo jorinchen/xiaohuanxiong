@@ -10,7 +10,7 @@
     "start": "electron .",
     "bump": "node scripts/bump-version.js",
     "predist": "node scripts/bump-version.js",
-    "dist": "set \"ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/\" && set \"ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/\" && electron-builder --win --x64",
+    "dist": "set \"ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/\" && set \"ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/\" && electron-builder --win --x64 --publish never",
     "postdist": "node scripts/sign-setup.js"
   },
   "devDependencies": {
