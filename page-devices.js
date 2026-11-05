@@ -39,16 +39,32 @@ function platformVersion(v) {
   return parts.slice(0, 3).join('.');
 }
 
+/* 各内核 / 系统版本对应的精确 UA（覆盖默认生成规则，确保与机型版本自洽）
+   key 格式： `${kernel}:${ver}` */
+const UA_OVERRIDES = {
+  'ios:18.6': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1',
+  'ios:19.2': 'Mozilla/5.0 (iPhone; CPU iPhone OS 19_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/19.2 Mobile/15E148 Safari/604.1',
+  'ios:26.4': 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1',
+  'ios:27.2': 'Mozilla/5.0 (iPhone; CPU iPhone OS 27_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/27.0 Mobile/15E148 Safari/604.1',
+  'harmony:5.1': 'Mozilla/5.0 (Phone; OpenHarmony 5.1; HarmonyOS 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36 ArkWeb/4.1.6.2 Mobile',
+  'harmony:6.1': 'Mozilla/5.0 (Phone; OpenHarmony 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36 ArkWeb/6.0.0.60 Mobile',
+  'harmony:7.0': 'Mozilla/5.0 (Phone; OpenHarmony 7.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 ArkWeb/6.0.0.120 Mobile',
+  'harmony:7.1': 'Mozilla/5.0 (Phone; OpenHarmony 7.1; HarmonyOS 7.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 ArkWeb/6.0.0.150 Mobile'
+};
+
+/* 鸿蒙各版本对应的 Chromium 版本（用于 Client Hints brands，与 UA 中的 Chrome 版本自洽） */
+const HARMONY_CHROME = { '5.1': '114', '6.1': '132', '7.0': '144', '7.1': '146' };
+
 /* 机型清单：w/h 为逻辑分辨率，dpr 为像素比，os 是菜单里显示的原文 */
 const SPECS = {
   ios: [
     { id: 'iphone13pro', name: 'iPhone 13 Pro', w: 390, h: 844, dpr: 3, os: 'ios 18.6', ver: '18.6' },
     { id: 'iphone13promax', name: 'iPhone 13 Pro Max', w: 428, h: 926, dpr: 3, os: 'ios 18.6', ver: '18.6' },
     { id: 'iphone15promax', name: 'iPhone 15 Pro Max', w: 430, h: 932, dpr: 3, os: 'ios 18.6', ver: '18.6' },
-    { id: 'iphone16', name: 'iPhone 16', w: 393, h: 852, dpr: 3, os: 'ios 18.6', ver: '18.6' },
+    { id: 'iphone16', name: 'iPhone 16', w: 393, h: 852, dpr: 3, os: 'ios 26.4', ver: '26.4' },
     { id: 'iphone18pro', name: 'iPhone 18 Pro', w: 402, h: 874, dpr: 3, os: 'ios 27.2', ver: '27.2' },
-    { id: 'iphoneair', name: 'iPhone Air', w: 420, h: 912, dpr: 3, os: 'ios 18.6', ver: '18.6' },
-    { id: 'iphone18promax', name: 'iPhone 18 Pro Max', w: 440, h: 956, dpr: 3, os: 'ios 18.6', ver: '18.6' }
+    { id: 'iphoneair', name: 'iPhone Air', w: 420, h: 912, dpr: 3, os: 'ios 19.2', ver: '19.2' },
+    { id: 'iphone18promax', name: 'iPhone 18 Pro Max', w: 440, h: 956, dpr: 3, os: 'ios 27.2', ver: '27.2' }
   ],
   android: [
     { id: 'galaxys25', name: 'Galaxy S25', w: 412, h: 915, dpr: 3, os: 'Android 14', ver: '14', model: 'SM-S931B', chrome: '146' },
@@ -91,7 +107,7 @@ function buildDevice(kernel, s) {
   const base = KERNEL_BASE[kernel];
   const isIOS = kernel === 'ios';
   const isAndroid = kernel === 'android';
-  const chrome = isAndroid ? (s.chrome || '146') : '114';
+  const chrome = isAndroid ? (s.chrome || '146') : (isIOS ? '114' : (HARMONY_CHROME[s.ver] || '114'));
   const model = s.model || (isIOS ? 'iPhone' : s.name);
   return {
     id: s.id,
@@ -105,7 +121,8 @@ function buildDevice(kernel, s) {
     meta: '(' + s.w + 'x' + s.h + '|Dpr:' + s.dpr + '|' + s.os + ')',
     menuText: s.name + ' (' + s.w + 'x' + s.h + '|Dpr:' + s.dpr + '|' + s.os + ')',
     screenW: s.w, screenH: s.h, dpr: s.dpr,
-    ua: isIOS ? iosUa(s.ver) : (isAndroid ? androidUa(s.ver, model, chrome) : harmonyUa(s.ver)),
+    ua: UA_OVERRIDES[kernel + ':' + s.ver] ||
+        (isIOS ? iosUa(s.ver) : (isAndroid ? androidUa(s.ver, model, chrome) : harmonyUa(s.ver))),
     platform: base.platform,
     platformVersion: platformVersion(s.ver),
     model: model,
