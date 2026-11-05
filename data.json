@@ -1,6 +1,6 @@
 {
   "app": "小浣熊移动内核桌面浏览器",
-  "version": "1.0.6",
+  "version": "1.0.9",
   "message": "这是一条来自演示站点的模拟接口响应",
   "kernel": [
     "iOS / WebKit",
