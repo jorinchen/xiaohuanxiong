@@ -424,7 +424,7 @@
      顶部菜单与机型列表不在此列 —— 它们用独立置顶小窗（popShow），
      网页无需隐藏，视频 / 动画照常播放。 */
   function syncPageVisibility() {
-    const modalOpen = !el.pwdModal.hidden || !el.vaultModal.hidden || !el.hwModal.hidden;
+    const modalOpen = !el.pwdModal.hidden || !el.vaultModal.hidden || !el.hwModal.hidden || !el.resendModal.hidden;
     const wantVisible = !modalOpen && !state.pageErrorVisible;
     if (wantVisible === state.pageVisible) return;
     state.pageVisible = wantVisible;
@@ -439,6 +439,7 @@
   modalObserver.observe(el.pwdModal, { attributes: true, attributeFilter: ['hidden'] });
   modalObserver.observe(el.vaultModal, { attributes: true, attributeFilter: ['hidden'] });
   modalObserver.observe(el.hwModal, { attributes: true, attributeFilter: ['hidden'] });
+  modalObserver.observe(el.resendModal, { attributes: true, attributeFilter: ['hidden'] });
 
   /* ================= 置顶弹层小窗口（菜单 / 机型列表选中回传） ================= */
   desktop.onPopSelected((p) => {
@@ -1991,12 +1992,30 @@
     const list = isCur ? state.requests : store.requests;
     const extras = isCur ? state.netExtra : (store.netExtra || (store.netExtra = {}));
     let row = null;
-    for (let i = list.length - 1; i >= 0 && !row; i--) {
-      if (list[i].url === d.url && (!d.method || list[i].method === d.method) && extras[list[i].id]) row = list[i];
-    }
-    if (!row) {
+    if (d.postData !== undefined) {
+      /* 请求体：优先配给「还没有请求体」的最新匹配行。
+         重新发送会产生同 url+method 的重复行，若按旧行为（优先已有 extras 的行）
+         配对，新行的请求体会被旧行抢走，详情里的「请求载荷」就会显示成"无请求体" */
       for (let i = list.length - 1; i >= 0 && !row; i--) {
-        if (list[i].url === d.url && (!d.method || list[i].method === d.method)) row = list[i];
+        if (list[i].url !== d.url) continue;
+        if (d.method && list[i].method && list[i].method !== d.method) continue;
+        const ex = extras[list[i].id];
+        if (!ex || ex.postData === undefined) row = list[i];
+      }
+      if (!row) {
+        for (let i = list.length - 1; i >= 0 && !row; i--) {
+          if (list[i].url === d.url && (!d.method || list[i].method === d.method)) row = list[i];
+        }
+      }
+    } else {
+      /* 响应体 / 失败原因等：优先已有 extras 的行（同一请求的多个事件合并到一行） */
+      for (let i = list.length - 1; i >= 0 && !row; i--) {
+        if (list[i].url === d.url && (!d.method || list[i].method === d.method) && extras[list[i].id]) row = list[i];
+      }
+      if (!row) {
+        for (let i = list.length - 1; i >= 0 && !row; i--) {
+          if (list[i].url === d.url && (!d.method || list[i].method === d.method)) row = list[i];
+        }
       }
     }
     if (!row) {
@@ -2745,6 +2764,23 @@
       '})()';
     desktop.exec(code).then((r) => {
       el.resendSend.disabled = false;
+      /* 兜底：把实际发送的请求体直接落到最新匹配行。CDP 的 postData 与 webRequest
+         行按 url+method 配对，重新发送的重复请求可能错行；这里保证「请求载荷」一定显示 */
+      let stampTry = 0;
+      const stampSentBody = () => {
+        for (let i = state.requests.length - 1; i >= 0; i--) {
+          const it = state.requests[i];
+          if (it.url !== url || (it.method || 'GET') !== method) continue;
+          if (payload.body !== undefined) {
+            const ex = state.netExtra[it.id] || (state.netExtra[it.id] = {});
+            if (ex.postData === undefined) ex.postData = payload.body;
+            if (state.netSelected === it.id) showNetworkDetail(it.id);
+          }
+          return;
+        }
+        if (++stampTry <= 3) setTimeout(stampSentBody, 400);
+      };
+      stampSentBody();
       if (!r || r.ok === false) {
         toast('发送失败：' + ((r && r.error) || '页面视图不可用'), 'err');
         return;
