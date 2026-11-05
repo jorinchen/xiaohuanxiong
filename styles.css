@@ -725,6 +725,19 @@ body[data-kernel="harmony"] .page-frame { --page-w: 436px; }
 }
 .modal-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .modal-actions button:hover { filter: brightness(1.15); }
+/* ===== 重新发送请求弹窗 ===== */
+.resend-form { display: flex; flex-direction: column; gap: 8px; overflow: auto; }
+.resend-row { display: flex; gap: 8px; }
+.resend-method { width: 122px; flex: 0 0 auto; }
+.resend-row .text-input:last-child { flex: 1 1 auto; min-width: 0; }
+.resend-label { font-size: 12px; color: #8fa3c2; text-align: left; line-height: 1.5; }
+.resend-area { height: auto; min-height: 64px; padding: 8px 10px; resize: vertical;
+  font-family: Consolas, Menlo, monospace; line-height: 1.5; }
+.nd-resend {
+  margin-left: auto; border: 1px solid #2c3a58; background: #1b2942; color: #c6d5ec;
+  padding: 3px 10px; border-radius: 7px; font-size: 11px;
+}
+.nd-resend:hover { border-color: var(--accent); color: #fff; }
 .vault-header { display: flex; align-items: flex-start; justify-content: space-between; }
 .vault-header .modal-desc { margin-bottom: 12px; }
 .close-x { border: 0; background: transparent; color: #8fa2bd; font-size: 16px; }

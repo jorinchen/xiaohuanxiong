@@ -186,6 +186,9 @@
     changePwdBtn: $('#changePwdBtn'), changePwdBox: $('#changePwdBox'),
     oldPwd: $('#oldPwd'), newPwd: $('#newPwd'), savePwdBtn: $('#savePwdBtn'),
     pwdChangeError: $('#pwdChangeError'), vaultDoneBtn: $('#vaultDoneBtn'),
+    resendModal: $('#resendModal'), resendMethod: $('#resendMethod'), resendUrl: $('#resendUrl'),
+    resendHeaders: $('#resendHeaders'), resendBody: $('#resendBody'), resendError: $('#resendError'),
+    resendSend: $('#resendSend'), resendCancel: $('#resendCancel'), resendCloseBtn: $('#resendCloseBtn'),
     tplPathOf: $('#tplPathOf'), tplDomTree: $('#tplDomTree'), tplDetail: $('#tplDetail'),
     tplSetAttrs: $('#tplSetAttrs'), tplTextNode: $('#tplTextNode'), tplRemoveNode: $('#tplRemoveNode'),
     tplInspect: $('#tplInspect'), tplPoll: $('#tplPoll'), tplStop: $('#tplStop'),
@@ -1181,6 +1184,7 @@
       '<h4 class="nd-sum' + (sumOpen ? ' nd-open' : '') + '" title="' +
         (sumOpen ? '收起概要' : '展开概要（URL / 所属页面 / 状态 / User-Agent）') + '">' +
         '<span class="nd-caret">▸</span>请求详情 #' + r.id +
+        '<button class="nd-resend" title="修改方法 / 网址 / 参数后重新发送该请求">↻ 重新发送</button>' +
       '</h4>' +
       '<div class="nd-summary"' + (sumOpen ? '' : ' hidden') + '>' +
         '<dl class="kv">' +
@@ -2489,6 +2493,13 @@
 
   /* 详情区子标签切换：消息头 / Cookie / 请求 / 响应 */
   el.networkDetail.addEventListener('click', (e) => {
+    /* 重新发送按钮：位于概要标题内部，要先于标题折叠判断处理 */
+    const rs = e.target.closest('.nd-resend');
+    if (rs) {
+      const rec = state.requests.find((x) => x.id === state.netSelected);
+      if (rec) openResendModal(rec);
+      return;
+    }
     /* 概要不折叠标题：点一下展开 / 收起 */
     const sum = e.target.closest('h4.nd-sum');
     if (sum) {
@@ -2642,6 +2653,11 @@
     $$('#networkBody tr').forEach((t) => t.classList.toggle('selected', t === tr));
     openCtxMenu(e.clientX, e.clientY, [
       {
+        label: '重新发送…', hint: 'Resend',
+        run: () => openResendModal(rec)
+      },
+      { sep: true },
+      {
         label: '复制链接', hint: 'Copy link',
         run: async () => {
           const ok = await copyText(rec.url || rec.name);
@@ -2661,6 +2677,100 @@
         run: () => { if (/^https?:/i.test(rec.url || '')) desktop.tabNew(rec.url).catch(() => {}); }
       }
     ]);
+  });
+
+  /* ================= 重新发送请求 =================
+     在页面视图上下文里 fetch：请求走页面会话（带 Cookie / 模拟 UA），
+     webRequest 照常抓包 → 自动出现在网络面板，可继续查看详情与响应 */
+  let resendRec = null;
+
+  /* fetch 的禁止头（浏览器自动携带或静默丢弃）：预填时剔除，避免"看起来设置了实际没生效" */
+  const FORBIDDEN_REQ_HEADERS =
+    /^(host|connection|content-length|cookie|origin|referer|user-agent|te|trailer|transfer-encoding|upgrade-insecure-requests|via|accept-encoding|priority|sec-.*)$/i;
+
+  function headersToText(obj) {
+    return headerRows(obj || {})
+      .filter((r) => !FORBIDDEN_REQ_HEADERS.test(r.name))
+      .map((r) => r.name + ': ' + r.value)
+      .join('\n');
+  }
+  function textToHeaders(text) {
+    const out = {};
+    String(text || '').split('\n').forEach((line) => {
+      const i = line.indexOf(':');
+      if (i < 0) return;
+      const name = line.slice(0, i).trim();
+      const value = line.slice(i + 1).trim();
+      if (!name || FORBIDDEN_REQ_HEADERS.test(name)) return;
+      out[name] = value;
+    });
+    return out;
+  }
+
+  function openResendModal(rec) {
+    if (!/^https?:/i.test(rec.url || '')) { toast('该请求没有可发送的 http(s) 地址', 'err'); return; }
+    resendRec = rec;
+    el.resendMethod.value = (rec.method || 'GET').toUpperCase();
+    el.resendUrl.value = rec.url || '';
+    el.resendHeaders.value = headersToText(rec.reqHeaders);
+    const extra = state.netExtra[rec.id] || {};
+    el.resendBody.value = extra.postData ? prettyBody(extra.postData) : '';
+    el.resendError.textContent = '';
+    el.resendModal.hidden = false;
+  }
+
+  function closeResendModal() { el.resendModal.hidden = true; resendRec = null; }
+
+  function sendResend() {
+    if (!resendRec) return;
+    const method = (el.resendMethod.value || 'GET').toUpperCase();
+    const url = el.resendUrl.value.trim();
+    if (!/^https?:\/\//i.test(url)) { el.resendError.textContent = '请输入合法的 http(s) 网址'; return; }
+    const payload = {
+      url: url,
+      method: method,
+      headers: textToHeaders(el.resendHeaders.value),
+      body: (/^(GET|HEAD)$/i.test(method) || !el.resendBody.value.trim()) ? undefined : el.resendBody.value
+    };
+    el.resendError.textContent = '';
+    el.resendSend.disabled = true;
+    /* 不用 pageExec（它带 8s 超时）：慢请求会被误判超时；这里等 fetch 真正结束 */
+    const code = '(async () => {' +
+      'try {' +
+      'const p = ' + JSON.stringify(payload) + ';' +
+      'const res = await fetch(p.url, { method: p.method, headers: p.headers, body: p.body, credentials: "include" });' +
+      'let n = 0; try { n = (await res.text()).length; } catch (e) {}' +
+      'return JSON.stringify({ status: res.status, size: n });' +
+      '} catch (e) { return JSON.stringify({ error: String((e && e.message) || e) }); }' +
+      '})()';
+    desktop.exec(code).then((r) => {
+      el.resendSend.disabled = false;
+      if (!r || r.ok === false) {
+        toast('发送失败：' + ((r && r.error) || '页面视图不可用'), 'err');
+        return;
+      }
+      let out = {};
+      try { out = JSON.parse(r.value); } catch (e) {}
+      pushLog('system', '重新发送 ' + method + ' ' + url + (out.status ? ' → ' + out.status : ''));
+      if (out.error) {
+        /* CORS 拦截读响应，但请求本身已发出并会被记录到网络面板 */
+        toast('请求已发出（页面无法读取响应：' + out.error + '），详情见网络面板', 'ok', 4200);
+      } else {
+        toast('已发送 ' + method + ' ' + (out.status || '') + '，已记录到网络面板', 'ok');
+      }
+      closeResendModal();
+    }).catch((err) => {
+      el.resendSend.disabled = false;
+      toast('发送失败：' + err.message, 'err');
+    });
+  }
+
+  el.resendCancel.addEventListener('click', closeResendModal);
+  el.resendCloseBtn.addEventListener('click', closeResendModal);
+  el.resendSend.addEventListener('click', sendResend);
+  el.resendModal.addEventListener('click', (e) => { if (e.target === el.resendModal) closeResendModal(); });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !el.resendModal.hidden) { closeResendModal(); e.stopPropagation(); }
   });
 
   document.addEventListener('mousedown', (e) => {

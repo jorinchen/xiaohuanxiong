@@ -215,6 +215,38 @@
   </div>
 </div>
 
+<!-- ===== 网络请求重新发送 ===== -->
+<div class="modal-backdrop" id="resendModal" hidden>
+  <div class="modal wide">
+    <div class="vault-header">
+      <div>
+        <h2>重新发送请求</h2>
+        <p class="modal-desc">可修改方法 / 网址 / 请求头 / 请求体后再发送<br />
+          <small>请求在当前页面上下文发出：自动携带 Cookie 与模拟 UA，并重新记录到网络面板</small></p>
+      </div>
+      <button class="close-x" id="resendCloseBtn" title="关闭">✕</button>
+    </div>
+    <div class="resend-form">
+      <div class="resend-row">
+        <select id="resendMethod" class="text-input resend-method" title="请求方法">
+          <option>GET</option><option>POST</option><option>PUT</option>
+          <option>DELETE</option><option>PATCH</option><option>HEAD</option><option>OPTIONS</option>
+        </select>
+        <input id="resendUrl" class="text-input" type="text" placeholder="https://…" spellcheck="false" />
+      </div>
+      <label class="resend-label" for="resendHeaders">请求头（每行一条，格式 Name: Value；Cookie / User-Agent / Referer 等受保护头由浏览器自动携带，无需填写）</label>
+      <textarea id="resendHeaders" class="text-input resend-area" rows="4" spellcheck="false" placeholder="Content-Type: application/json"></textarea>
+      <label class="resend-label" for="resendBody">请求体（POST / PUT 等可用，GET / HEAD 自动忽略）</label>
+      <textarea id="resendBody" class="text-input resend-area" rows="5" spellcheck="false" placeholder='{"key": "value"}'></textarea>
+      <p class="form-error" id="resendError"></p>
+    </div>
+    <div class="modal-actions">
+      <button id="resendCancel">取消</button>
+      <button id="resendSend" class="primary">发送</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== 收藏网址列表 ===== -->
 <div class="modal-backdrop" id="vaultModal" hidden>
   <div class="modal wide">
