@@ -1,0 +1,155 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  /* 与主界面 styles.css 同一套配色（:root 变量的镜像） */
+  :root {
+    --line: rgba(255, 255, 255, .09);
+    --accent: #3d6fe0;
+    --accent-soft: rgba(70, 120, 230, .26);
+    --muted: #8ba0c0;
+    --green: #35c26e;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden; background: transparent;
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    user-select: none; cursor: default;
+  }
+  #pop {
+    width: max-content; min-width: 216px; max-width: 460px; max-height: 100%;
+    padding: 6px; background: #16213a; border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 16px 36px rgba(0, 0, 0, .5); overflow-y: auto; overflow-x: hidden;
+  }
+  /* ---- 下拉菜单（文件 / 视图 / 工具 / 帮助） ---- */
+  .menu-row {
+    display: flex; align-items: center; gap: 16px; width: 100%;
+    padding: 7px 10px; border: 0; border-radius: 7px; background: transparent;
+    color: #dbe6f7; font-size: 12.5px; text-align: left; cursor: pointer;
+  }
+  .menu-row:hover { background: var(--accent); color: #fff; }
+  .menu-label { flex: 1 1 auto; white-space: nowrap; }
+  .menu-hint { flex: 0 0 auto; font-size: 11px; color: #7f93b3; }
+  .menu-row:hover .menu-hint { color: rgba(255, 255, 255, .8); }
+  .menu-sep { height: 1px; margin: 5px 6px; background: var(--line); }
+  /* ---- 机型选择列表（悬停内核按钮弹出） ---- */
+  .device-pop-head {
+    padding: 6px 10px 8px; margin-bottom: 4px; font-size: 11px; color: var(--muted);
+    border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  .device-row {
+    display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px;
+    border: 0; border-radius: 7px; background: transparent; color: #dbe6f7;
+    font-size: 12px; text-align: left; white-space: nowrap; cursor: pointer;
+  }
+  .device-row:hover { background: var(--accent); color: #fff; }
+  .device-row.active { background: var(--accent-soft); }
+  .device-check { flex: 0 0 13px; width: 13px; color: var(--green); font-size: 11px; }
+  .device-name { font-weight: 600; }
+  .device-meta { color: var(--muted); font-size: 11px; }
+  .device-row:hover .device-meta { color: rgba(255, 255, 255, .8); }
+</style>
+</head>
+<body>
+<div id="pop"></div>
+<script>
+  'use strict';
+  const root = document.getElementById('pop');
+
+  function measure() {
+    /* 同步测量（隐藏窗口里 rAF 不会触发，不能用 requestAnimationFrame）；
+       测量期间解除 max-height 限制，拿到内容自然尺寸 */
+    root.style.maxHeight = 'none';
+    const r = root.getBoundingClientRect();
+    const w = Math.ceil(r.width) + 2;
+    const h = Math.ceil(root.scrollHeight) + 2;
+    popUI.resize(w, h);
+  }
+  window.addEventListener('resize', () => { root.style.maxHeight = ''; });
+
+  function renderMenu(d) {
+    (d.items || []).forEach((it) => {
+      if (it.sep) {
+        const sep = document.createElement('div');
+        sep.className = 'menu-sep';
+        root.appendChild(sep);
+        return;
+      }
+      const row = document.createElement('button');
+      row.className = 'menu-row' + (it.danger ? ' danger' : '');
+      const label = document.createElement('span');
+      label.className = 'menu-label';
+      label.textContent = it.label;
+      row.appendChild(label);
+      if (it.hint) {
+        const hint = document.createElement('span');
+        hint.className = 'menu-hint';
+        hint.textContent = it.hint;
+        row.appendChild(hint);
+      }
+      /* 用 mousedown 触发（不依赖完整 click 序列），加防重复保护 */
+      let picked = false;
+      row.addEventListener('mousedown', () => {
+        if (picked) return;
+        picked = true;
+        popUI.select({ kind: 'menu', menuId: d.menuId, action: it.action });
+      });
+      root.appendChild(row);
+    });
+  }
+
+  function renderDevice(d) {
+    const head = document.createElement('div');
+    head.className = 'device-pop-head';
+    head.textContent = d.head;
+    root.appendChild(head);
+    (d.items || []).forEach((dev) => {
+      const active = d.kernel === d.activeKernel && dev.id === d.activeDevice;
+      const row = document.createElement('button');
+      row.className = 'device-row' + (active ? ' active' : '');
+      const check = document.createElement('span');
+      check.className = 'device-check';
+      check.textContent = active ? '✓' : '';
+      const name = document.createElement('span');
+      name.className = 'device-name';
+      name.textContent = dev.name;
+      const meta = document.createElement('span');
+      meta.className = 'device-meta';
+      meta.textContent = dev.meta;
+      row.appendChild(check);
+      row.appendChild(name);
+      row.appendChild(meta);
+      let picked = false;
+      row.addEventListener('mousedown', () => {
+        if (picked) return;
+        picked = true;
+        popUI.select({ kind: 'device', kernel: d.kernel, device: dev.id });
+      });
+      root.appendChild(row);
+    });
+  }
+
+  window.popUI.onData((d) => {
+    if (!d) return;
+    root.innerHTML = '';
+    if (d.kind === 'menu') renderMenu(d);
+    else if (d.kind === 'device') renderDevice(d);
+    measure();
+  });
+
+  /* 悬停跟踪：小窗刚显示时光标不在其内，Chromium 会派发一次合成的
+     mouseleave，若直接上报 hover-out 会让弹层刚出现就 220ms 后自动关闭
+     （表现为机型列表闪烁/还没移过去就消失）。
+     因此以"真实 mousemove 进入过"为准：先动过才允许 hover-out。 */
+  let mouseInside = false;
+  document.addEventListener('mousemove', () => {
+    if (!mouseInside) { mouseInside = true; window.popUI.hoverIn(); }
+  });
+  document.addEventListener('mouseleave', () => {
+    if (mouseInside) { mouseInside = false; window.popUI.hoverOut(); }
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.popUI.hide(); });
+</script>
+</body>
+</html>

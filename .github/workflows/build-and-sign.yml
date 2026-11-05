@@ -1,0 +1,64 @@
+name: Build and Sign (SignPath)
+
+on:
+  push:
+    tags: ['v*']          # 打 tag 如 v1.0.6 时自动构建、签名并发布 Release
+  workflow_dispatch:      # 也支持手动触发（出未带 Release 的 artifact）
+
+# 创建 Release 需要写仓库内容的权限
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # tag 发布：把版本号对齐到 tag（去掉前缀 v），并跳过自动 +1
+      - name: Align version to tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: node scripts/set-version.js ${{ github.ref_name }}
+
+      # npm run dist 会：
+      #   predist   -> 自动 +1 版本号（tag 构建时因 SKIP_BUMP=1 跳过）
+      #   electron-builder -> 打包（afterSign 钩子给 PcAsMobile.exe 签名）
+      #   postdist  -> 给 setup.exe 签名
+      # 签名通过 SignPath 完成，凭据来自仓库 Secrets（未配置则出未签名包）。
+      - name: Build & Sign with SignPath
+        run: npm run dist
+        env:
+          SKIP_BUMP: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
+          ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
+          ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_ID: ${{ secrets.SIGNPATH_PROJECT_ID }}
+          SIGNPATH_SIGNING_POLICY: release-signing
+          # 可选：若 SignPath 项目要求指定 artifact configuration，设此项
+          # SIGNPATH_ARTIFACT_CONFIG: executable
+
+      # tag 构建：自动创建 GitHub Release 并上传已签名的安装包
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/setup.exe
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 手动触发（非 tag）：仅上传 artifact，不创建 Release
+      - name: Upload artifact
+        if: "!startsWith(github.ref, 'refs/tags/v')"
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiaohuanxiong-setup
+          path: dist/setup.exe

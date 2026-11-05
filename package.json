@@ -1,0 +1,66 @@
+{
+  "name": "xiaohuanxiong",
+  "version": "1.0.6",
+  "description": "小浣熊 - iOS / Android kernel simulator browser (desktop app)",
+  "main": "main.js",
+  "author": "Jorin",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "bump": "node scripts/bump-version.js",
+    "predist": "node scripts/bump-version.js",
+    "dist": "set \"ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/\" && set \"ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/\" && electron-builder --win --x64",
+    "postdist": "node scripts/sign-setup.js"
+  },
+  "devDependencies": {
+    "electron": "^45.2.1",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "com.jorin.xiaohuanxiong",
+    "productName": "小浣熊",
+    "afterSign": "scripts/after-sign.js",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/koffi/**"
+    ],
+    "files": [
+      "main.js",
+      "preload.js",
+      "page-preload.js",
+      "page-devices.js",
+      "page-inject.js",
+      "sensor-patch.js",
+      "popup.html",
+      "popup-preload.js",
+      "index.html",
+      "styles.css",
+      "app.js",
+      "data.json",
+      "assets/**/*",
+      "node_modules/koffi/**",
+      "package.json"
+    ],
+    "win": {
+      "icon": "assets/icon.png",
+      "executableName": "PcAsMobile",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "artifactName": "setup.exe",
+      "warningsAsErrors": false,
+      "shortcutName": "小浣熊",
+      "uninstallDisplayName": "小浣熊 · 移动内核桌面浏览器",
+      "include": "installer.nsh"
+    }
+  },
+  "dependencies": {
+    "koffi": "^3.3.6"
+  }
+}

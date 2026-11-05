@@ -1,0 +1,977 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>小浣熊 · 移动内核桌面浏览器</title>
+<link rel="icon" type="image/png" href="/assets/icon.png" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body data-kernel="ios">
+<div class="app" id="app">
+
+  <!-- ===== 自定义标题栏：只放菜单，系统窗口按钮由 titleBarOverlay 画在右上角 ===== -->
+  <header class="titlebar" id="titlebar">
+    <nav class="app-menu" id="appMenu">
+      <button class="menu-item" data-menu="文件">文件</button>
+      <button class="menu-item" data-menu="视图">视图</button>
+      <button class="menu-item" data-menu="工具">工具</button>
+      <button class="menu-item" data-menu="帮助">帮助</button>
+    </nav>
+    <div class="menu-pop" id="menuPop" hidden></div>
+  </header>
+
+  <!-- ===== 导航行（地址栏 / 收藏 / 刷新在最上面） ===== -->
+  <nav class="nav-row">
+    <div class="nav-buttons">
+      <button class="icon-btn" id="btnBack" title="后退" disabled>‹</button>
+      <button class="icon-btn" id="btnForward" title="前进" disabled>›</button>
+      <button class="icon-btn" id="btnRefresh" title="刷新页面">⟳</button>
+      <button class="icon-btn" id="btnHome" title="主页">⌂</button>
+    </div>
+    <div class="addr-field">
+      <span class="lock-icon" id="lockIcon">🔒</span>
+      <input id="addressInput" type="text" spellcheck="false" autocomplete="off"
+             placeholder="输入网址，或直接输入关键词搜索" value="https://www.baidu.com" aria-label="地址栏" />
+      <span class="ua-badge" id="uaBadge">WebKit</span>
+    </div>
+    <button class="addr-btn star" id="btnVault" title="收藏网址（需输入密码）" aria-label="收藏网址">☆</button>
+    <button class="addr-btn" id="btnDevtools" title="控制台 (F12)" aria-label="控制台">⌘</button>
+    <div class="progress" id="progressBar" hidden></div>
+  </nav>
+
+  <!-- ===== 标签栏（多标签页） ===== -->
+  <div class="tabs-bar">
+    <div class="tabs-scroll" id="tabsScroll"></div>
+    <button class="tab-new" id="btnNewTab" title="新建标签页">＋</button>
+  </div>
+
+  <!-- ===== 工具行 ===== -->
+  <div class="tool-row">
+    <div class="control-group kernel-switch" role="group" aria-label="模拟内核">
+      <button class="seg active" data-kernel="ios">iOS · WebKit</button>
+      <button class="seg" data-kernel="android">Android · Blink</button>
+      <button class="seg" data-kernel="harmony">鸿蒙 · ArkWeb</button>
+    </div>
+
+    <div class="control-group" role="group" aria-label="视口宽度">
+      <span class="group-label">视口</span>
+      <button class="seg vp active" data-vp="phone">手机</button>
+      <button class="seg vp" data-vp="full">全宽</button>
+    </div>
+
+    <div class="control-group">
+      <span class="group-label">页面</span>
+      <button class="icon-btn" id="pageZoomOut" title="缩小网页">−</button>
+      <span class="value" id="pageZoomLabel">100%</span>
+      <button class="icon-btn" id="pageZoomIn" title="放大网页">+</button>
+    </div>
+
+    <span class="spacer"></span>
+    <span class="ua-line" id="uaLine">iPhone 18 Pro · iOS 27.2 · WebKit 模拟内核 · 视口 402px</span>
+    <button class="tool-btn" id="btnHw" title="硬件与传感器：摄像头 / 麦克风 / 网络 / GPS / 陀螺仪 / 蓝牙">📡 硬件</button>
+    <button class="tool-btn" id="btnFullscreen" title="窗口全屏">⛶ 全屏</button>
+  </div>
+
+  <!-- 悬停内核按钮弹出的机型选择菜单 -->
+  <div class="device-pop" id="devicePop" hidden></div>
+
+  <!-- ===== 工作区（页面 + 可停靠 DevTools） ===== -->
+  <div class="workbench" id="workbench">
+  <!-- ===== 页面区（由主进程 WebContentsView 渲染） ===== -->
+  <main class="page-area" id="pageArea">
+    <div class="page-frame" id="pageFrame">
+    <img id="pageSnapshot" class="page-snapshot" alt="" hidden />
+    <div class="page-loading" id="pageLoading" hidden><span class="spinner"></span>加载中…</div>
+      <div class="blocked-tip" id="blockedTip" hidden>
+        <strong>页面加载失败</strong>
+        <p id="pageErrorText"></p>
+        <div class="blocked-actions">
+          <button id="btnOpenNewWindow">在新窗口打开</button>
+          <button id="btnBackHome">返回演示主页</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ===== F12 控制台 ===== -->
+  <section class="devtools" id="devtools" hidden>
+    <header class="devtools-header">
+      <div class="devtools-title">
+        <span class="dot"></span> DevTools
+      </div>
+      <nav class="devtools-tabs">
+        <button id="btnInspectMode" class="inspect-toggle" title="选取元素：开启后在页面中悬停元素即可高亮并在查看器中定位">⌖ 选取</button>
+        <button class="tab active" data-tab="elements">◧ 查看器</button>
+        <button class="tab" data-tab="console">›_ 控制器</button>
+        <button class="tab" data-tab="network">⇅ 网络 <span class="badge" id="netCount">0</span></button>
+        <button class="tab" data-tab="sources">▤ 调试器 <span class="badge" id="srcCount">0</span></button>
+      </nav>
+      <div class="devtools-actions">
+        <label class="persist-toggle" title="勾选后，刷新页面或换网址时保留控制器与网络记录">
+          <input type="checkbox" id="persistLog" /> 持续
+        </label>
+        <button id="btnClearDevtools" title="清空当前面板">清空</button>
+        <button id="btnDockToggle" title="切换停靠位置（底部 / 右侧）">⇥ 右侧</button>
+        <button id="btnCloseDevtools" title="关闭控制台">✕</button>
+      </div>
+    </header>
+
+    <div class="devtools-body">
+      <div class="panel" data-panel="elements">
+        <div class="dom-toolbar">
+          <button id="btnRefreshDom">↻ 重新载入 DOM</button>
+          <!-- 选取元素按钮只保留主工具栏那一处，这里的重复入口已移除 -->
+          <span class="dom-path" id="domPath">document</span>
+        </div>
+        <div class="elements-split">
+          <div class="dom-tree" id="domTree"></div>
+          <div class="dom-detail" id="domDetail"><p class="empty">悬停页面元素或点击左侧节点查看属性</p></div>
+        </div>
+      </div>
+
+      <div class="panel" data-panel="console" hidden>
+        <div class="console-toolbar" id="logFilters">
+          <button type="button" class="log-filter active" data-kind="error">错误<b>0</b></button>
+          <button type="button" class="log-filter active" data-kind="warn">警告<b>0</b></button>
+          <button type="button" class="log-filter active" data-kind="info">信息<b>0</b></button>
+          <button type="button" class="log-filter active" data-kind="system">系统<b>0</b></button>
+          <span class="log-hint">页面 console / 脚本错误 / 资源加载失败，带来源文件与行号 · 超长内容双击展开</span>
+        </div>
+        <div class="console-output" id="consoleOutput"></div>
+        <form class="console-input" id="consoleForm" autocomplete="off">
+          <span class="prompt">›</span>
+          <input id="consoleInput" type="text" spellcheck="false" placeholder="输入 JavaScript，回车执行（help 查看帮助）" />
+          <button type="submit">执行</button>
+        </form>
+      </div>
+
+      <div class="panel" data-panel="network" hidden>
+        <div class="network-toolbar">
+          <span>共 <b id="netTotal">0</b> 条请求</span>
+        </div>
+        <div class="network-filters" id="netFilters">
+          <button class="net-filter active" data-filter="all">所有</button>
+          <button class="net-filter" data-filter="html">HTML</button>
+          <button class="net-filter" data-filter="css">CSS</button>
+          <button class="net-filter" data-filter="js">JS</button>
+          <button class="net-filter" data-filter="xhr">XHR</button>
+          <button class="net-filter" data-filter="font">字体</button>
+          <button class="net-filter" data-filter="img">图像</button>
+          <button class="net-filter" data-filter="media">媒体</button>
+          <button class="net-filter" data-filter="ws">WS</button>
+          <button class="net-filter" data-filter="other">其他</button>
+          <span class="net-filtered" id="netFiltered"></span>
+        </div>
+        <div class="network-split">
+          <!-- 列宽固定（合计 400px+），窄面板下在自己这一列内横向滚动，不溢出到详情区 -->
+          <div class="network-list">
+            <table class="network-table">
+              <thead><tr><th>#</th><th>名称</th><th>方法</th><th>状态</th><th>类型</th><th>大小</th></tr></thead>
+              <tbody id="networkBody"></tbody>
+            </table>
+          </div>
+          <div class="network-detail" id="networkDetail"><p class="empty">点击请求查看详情</p></div>
+        </div>
+      </div>
+
+      <!-- 调试器：左侧页面脚本文件树，右侧源码（带行号，可从控制台直接跳转定位） -->
+      <div class="panel" data-panel="sources" hidden>
+        <div class="sources-split">
+          <div class="sources-side">
+            <div class="sources-toolbar">
+              <input id="srcFilter" type="text" spellcheck="false" placeholder="筛选文件…" aria-label="筛选脚本文件" />
+              <button id="btnRefreshSources" title="重新扫描页面脚本">↻</button>
+            </div>
+            <div class="sources-tree" id="sourcesTree"><p class="empty">暂无脚本</p></div>
+          </div>
+          <div class="sources-main">
+            <div class="sources-head">
+              <span class="src-file" id="srcFileLabel">未选择文件</span>
+              <span class="src-meta" id="srcFileMeta"></span>
+            </div>
+            <div class="sources-body" id="sourcesBody"><p class="empty">从左侧选择一个脚本，或点击控制台里的来源文件名直接定位</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="devtools-resizer" id="devtoolsResizer" title="拖拽调整大小"></div>
+  </section>
+  </div><!-- /workbench -->
+</div>
+
+<!-- ===== 密码弹窗 ===== -->
+<div class="modal-backdrop" id="pwdModal" hidden>
+  <div class="modal">
+    <div class="modal-icon">🔒</div>
+    <h2>收藏夹已锁定</h2>
+    <p class="modal-desc">查看收藏网址需要输入密码<br /><small>默认密码：123456</small></p>
+    <input id="pwdInput" class="text-input" type="password" placeholder="请输入密码" autocomplete="off" />
+    <p class="form-error" id="pwdError"></p>
+    <div class="modal-actions">
+      <button id="pwdCancel">取消</button>
+      <button id="pwdSubmit" class="primary">解锁</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 收藏网址列表 ===== -->
+<div class="modal-backdrop" id="vaultModal" hidden>
+  <div class="modal wide">
+    <div class="vault-header">
+      <div>
+        <h2>⭐ 收藏网址</h2>
+        <p class="modal-desc">共 <b id="vaultCount">0</b> 个网址，点击即可访问</p>
+      </div>
+      <button class="close-x" id="closeVaultBtn" aria-label="关闭">✕</button>
+    </div>
+
+    <button class="primary-btn full" id="addCurrentBtn">＋ 收藏当前页面</button>
+    <div class="vault-list" id="vaultList"></div>
+
+    <div class="change-pwd-box" id="changePwdBox" hidden>
+      <h4>修改解锁密码</h4>
+      <div class="pwd-row">
+        <input id="oldPwd" class="text-input" type="password" placeholder="原密码" />
+        <input id="newPwd" class="text-input" type="password" placeholder="新密码（至少 4 位）" />
+        <button id="savePwdBtn" class="primary">保存</button>
+      </div>
+      <p class="form-error" id="pwdChangeError"></p>
+    </div>
+
+    <div class="modal-actions split">
+      <button id="changePwdBtn">修改密码</button>
+      <button id="vaultDoneBtn" class="primary">完成</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 非桌面环境提示 ===== -->
+<div class="desktop-only" id="desktopOnly" hidden>
+  <div class="desktop-only-card">
+    <div class="modal-icon">🖥</div>
+    <h2>小浣熊是桌面应用程序</h2>
+    <p>请通过项目目录下的 <code>start-app.bat</code> 启动，<br />或在终端执行 <code>npm start</code>。</p>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- ===== 硬件与传感器 ===== -->
+<div class="modal-backdrop" id="hwModal" hidden>
+  <div class="modal wide hw-modal">
+    <div class="vault-header">
+      <div>
+        <h2>📡 硬件与传感器</h2>
+        <p class="modal-desc">模拟移动设备的摄像头、麦克风、网络、定位与姿态传感器，对所有标签页生效</p>
+      </div>
+      <button class="close-x" id="closeHwBtn" aria-label="关闭">✕</button>
+    </div>
+
+    <div class="hw-grid">
+      <div class="hw-card">
+        <h4>网络环境（WiFi / 数据网络）</h4>
+        <div class="seg-row" id="hwNet">
+          <button class="seg" data-net="wifi">WiFi</button>
+          <button class="seg" data-net="4g">4G</button>
+          <button class="seg" data-net="3g">3G</button>
+          <button class="seg" data-net="offline">离线</button>
+        </div>
+        <p class="hw-note">离线时页面会收到 offline 事件，navigator.onLine 变为 false</p>
+      </div>
+
+      <div class="hw-card">
+        <h4>定位（GPS）</h4>
+        <label class="hw-check"><input type="checkbox" id="hwGpsOn" /> 启用 GPS，页面请求定位时返回下方坐标</label>
+        <div class="hw-row">
+          <input class="text-input" id="hwLat" type="text" placeholder="纬度，如 39.908823" />
+          <input class="text-input" id="hwLng" type="text" placeholder="经度，如 116.397470" />
+        </div>
+        <div class="seg-row" id="hwGeoPresets">
+          <button class="seg" data-lat="39.908823" data-lng="116.397470">北京</button>
+          <button class="seg" data-lat="31.230416" data-lng="121.473701">上海</button>
+          <button class="seg" data-lat="23.129163" data-lng="113.264435">广州</button>
+          <button class="seg" data-lat="22.543096" data-lng="114.057865">深圳</button>
+        </div>
+      </div>
+
+      <div class="hw-card">
+        <h4>姿态传感器（陀螺仪 / 重力感应）</h4>
+        <div class="seg-row" id="hwSensorMode">
+          <button class="seg" data-mode="still">静放</button>
+          <button class="seg" data-mode="shake">摇一摇</button>
+          <button class="seg" data-mode="custom">固定角度</button>
+        </div>
+        <div class="hw-row" id="hwAngleRow">
+          <input class="text-input" id="hwAlpha" type="text" placeholder="α 方位角" />
+          <input class="text-input" id="hwBeta" type="text" placeholder="β 前倾" />
+          <input class="text-input" id="hwGamma" type="text" placeholder="γ 侧倾" />
+        </div>
+        <p class="hw-note">页面通过 DeviceOrientation / DeviceMotion 事件读取（requestPermission 直接放行）</p>
+      </div>
+
+      <div class="hw-card">
+        <h4>媒体、蓝牙与触摸</h4>
+        <label class="hw-check"><input type="checkbox" id="hwCam" /> 摄像头：允许页面调用 getUserMedia({ video })</label>
+        <label class="hw-check"><input type="checkbox" id="hwMic" /> 麦克风：允许页面调用 getUserMedia({ audio })</label>
+        <label class="hw-check"><input type="checkbox" id="hwBt" /> 蓝牙：允许页面访问 navigator.bluetooth</label>
+        <label class="hw-check"><input type="checkbox" id="hwTouch" /> 鼠标模拟手指触摸：左键点击 / 拖动派发 touchstart / touchmove / touchend</label>
+        <p class="hw-note">关闭后页面请求会直接被拒绝；触摸开关关闭时页面只收到鼠标事件（地图缩放按钮等会点不动）</p>
+      </div>
+    </div>
+
+    <div class="modal-actions split">
+      <button id="hwResetBtn">恢复默认</button>
+      <button id="hwSaveBtn" class="primary">应用</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== 右键菜单（网络请求行等） ===== -->
+<div class="ctx-menu" id="ctxMenu" hidden></div>
+
+<!-- ===== 页面注入脚本模板（在网页上下文执行） ===== -->
+<script type="text/plain" id="tplPathOf">
+function __simPathOf(el) {
+  if (el.id && /^[A-Za-z][\w-]*$/.test(el.id) && !/^__sim_/.test(el.id)) return '#' + CSS.escape(el.id);
+  var parts = [];
+  while (el && el.nodeType === 1 && parts.length < 24) {
+    var sel = el.tagName.toLowerCase();
+    if (el.id && /^[A-Za-z][\w-]*$/.test(el.id) && !/^__sim_/.test(el.id)) { parts.unshift('#' + CSS.escape(el.id)); break; }
+    var cls = (typeof el.className === 'string' ? el.className : '').trim().split(/\s+/).filter(Boolean).slice(0, 2);
+    if (cls.length) sel += cls.map(function (x) { return '.' + CSS.escape(x); }).join('');
+    var p = el.parentElement;
+    if (p) {
+      var same = Array.prototype.filter.call(p.children, function (ch) { return ch.tagName === el.tagName; });
+      if (same.length > 1) sel += ':nth-of-type(' + (same.indexOf(el) + 1) + ')';
+    }
+    parts.unshift(sel);
+    el = p;
+  }
+  return parts.join(' > ');
+}
+/* 跨 frame 路径解析：'#f3zcdb5zz >> html > body > div'
+   '>>' 表示「进入前一个元素的 contentDocument」—— iframe 内容是独立文档，
+   document.querySelector 永远查不到，必须逐层切换 document */
+function __simFrameChain(path) {
+  var segs = String(path).split(' >> ');
+  var doc = document;
+  var el = null;
+  var frames = [];
+  for (var i = 0; i < segs.length; i++) {
+    try { el = doc.querySelector(segs[i]); } catch (e) { return null; }
+    if (!el) return null;
+    if (i < segs.length - 1) {
+      frames.push(el);
+      try { doc = el.contentDocument; } catch (e) { doc = null; }
+      if (!doc) return null;
+    }
+  }
+  return { el: el, doc: doc, frames: frames };
+}
+function __simResolve(path) {
+  var r = __simFrameChain(path);
+  return r && r.el;
+}
+/* 元素在【主文档视口】中的位置：iframe 内元素的 rect 是相对它自己的视口，
+   高亮框画在主文档上，必须逐层加上 frame 的偏移 */
+function __simAbsRect(el) {
+  var r = el.getBoundingClientRect();
+  var left = r.left, top = r.top;
+  try {
+    var w = el.ownerDocument.defaultView;
+    while (w && w !== window) {
+      var fe = w.frameElement;
+      if (!fe) break;
+      var fr = fe.getBoundingClientRect();
+      left += fr.left; top += fr.top;
+      w = fe.ownerDocument.defaultView;
+    }
+  } catch (e) {}
+  return { left: left, top: top, width: r.width, height: r.height };
+}
+/* CSS 属性判定：border / color 这类名字写成 HTML 属性时浏览器不会当样式解析
+   （<p border="1px solid green"> 就是这么"没反应"的），必须落到 inline style 才生效 */
+var __SIM_CSS_SKIP = { length: 1, cssText: 1, parentRule: 1, item: 1, getPropertyValue: 1, setProperty: 1, removeProperty: 1 };
+function __simCssName(name) {
+  return String(name).replace(/[A-Z]/g, function (c) { return '-' + c.toLowerCase(); });
+}
+function __simIsCss(el, name) {
+  if (!name || __SIM_CSS_SKIP[name]) return false;
+  if (name.indexOf('--') === 0) return true;   /* CSS 自定义属性 */
+  /* 元素自身有同名 DOM 属性（src / content / href / charset / width…）→ 是 HTML 属性。
+     注意 CSSStyleDeclaration 上同样能查到 src（@font-face 描述符）、content、width 这些名字，
+     只判断 style 会把 <script src> 误判成 CSS，改值时被当成非法样式值丢弃，
+     表现就是「属性改了没生效」 */
+  try { if (name in el) return false; } catch (e) {}
+  try { return __simCssName(name) in el.style; } catch (e) { return false; }
+}
+/* 值合法性探测：非法值 setProperty 会被静默忽略、getPropertyValue 仍返回旧值，
+   直接读元素判断不出真假，必须用临时元素试写一次 */
+function __simCssValid(el, name, value) {
+  try {
+    var probe = (el.ownerDocument || document).createElement('div');
+    probe.style.setProperty(name, value);
+    return !!probe.style.getPropertyValue(name);
+  } catch (e) { return false; }
+}
+
+/* 元素详情快照（tplInspect 点击时同步调用 + tplDetail 按路径调用共用）：
+   动态页面里元素可能在轮询读取前被重建，点击瞬间抓取才可靠 */
+function __simDetail(el) {
+  var r = __simAbsRect(el);
+  var view = (el.ownerDocument && el.ownerDocument.defaultView) || window;
+  var cs = view.getComputedStyle(el);
+  var isImg = el.tagName === 'IMG';
+  var isFrame = /^(IFRAME|FRAME|EMBED|OBJECT)$/.test(el.tagName);
+  var frameSrc = '';
+  if (isFrame) {
+    frameSrc = el.getAttribute('src') || '';
+    if (!frameSrc) {
+      var sd = el.getAttribute('srcdoc');
+      frameSrc = sd ? 'srcdoc: ' + sd.replace(/\s+/g, ' ').trim().slice(0, 80) : (el.contentDocument ? 'about:blank' : '');
+    }
+  }
+  return {
+    tag: el.tagName.toLowerCase(),
+    id: el.id || '',
+    cls: typeof el.className === 'string' ? el.className : '',
+    src: isImg ? (el.currentSrc || el.src || '') : frameSrc,
+    natural: isImg ? { w: el.naturalWidth || 0, h: el.naturalHeight || 0 } : null,
+    attrs: Array.prototype.map.call(el.attributes || [], function (a) { return a.name + '="' + a.value + '"'; }).join(' '),
+    /* 结构化属性列表：属性编辑表单直接用它回填，避免解析 'a="1" b="2"' 这类字符串 */
+    attrList: Array.prototype.map.call(el.attributes || [], function (a) { return { name: a.name, value: a.value }; }),
+    /* 哪些属性名其实是 CSS 属性：编辑器里标出来，保存时会自动写进 inline style */
+    cssAttrs: Array.prototype.filter.call(el.attributes || [], function (a) { return __simIsCss(el, a.name); })
+      .map(function (a) { return a.name; }),
+    text: (el.textContent || '').trim().slice(0, 160),
+    html: (el.outerHTML || '').slice(0, 400),
+    rect: { w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.left), y: Math.round(r.top) },
+    style: ['display', 'position', 'color', 'background-color', 'border', 'border-radius', 'width', 'height', 'font-size', 'margin', 'padding']
+      .map(function (k) { return k + ': ' + cs.getPropertyValue(k); }).join('\n')
+  };
+}
+</script>
+
+<script type="text/plain" id="tplDomTree">
+(function () {
+  var MAXN = 800, MAXD = 20, count = 0;
+  var targetSel = __TARGET_JSON__;
+  /* 目标祖先链上的节点不受采样上限约束（保证悬停跟随一定能定位到深层元素） */
+  var forcedSet = null;
+  /* 跨 frame 路径（含 ' >> '）不参与强制定位：那条链在 iframe 的独立文档里，
+     主文档 walk 对不上，强行拆分只会得到错误的前缀 */
+  if (targetSel && targetSel.indexOf(' >> ') < 0) {
+    /* 直接按 path 字符串解析（不查元素）——动态页面里元素可能稍纵即逝，
+       只要 walk 时链上节点存在 DOM 中就会强制收录 */
+    forcedSet = {};
+    var acc = [];
+    targetSel.split(' > ').forEach(function (seg) {
+      if (seg.charAt(0) === '#') acc = [seg];   /* 与 walk 一致：id 祖先重置路径 */
+      else acc.push(seg);
+      forcedSet[acc.join(' > ')] = true;
+    });
+  }
+  function cls(el) { return typeof el.className === 'string' ? el.className : ''; }
+  function childSel(el) {
+    if (el.id && /^[A-Za-z][\w-]*$/.test(el.id) && !/^__sim_/.test(el.id)) return '#' + CSS.escape(el.id);
+    var sel = el.tagName.toLowerCase();
+    var cs = cls(el).trim().split(/\s+/).filter(Boolean).slice(0, 2);
+    if (cs.length) sel += cs.map(function (x) { return '.' + CSS.escape(x); }).join('');
+    var p = el.parentElement;
+    if (p) {
+      var same = Array.prototype.filter.call(p.children, function (ch) { return ch.tagName === el.tagName; });
+      if (same.length > 1) sel += ':nth-of-type(' + (same.indexOf(el) + 1) + ')';
+    }
+    return sel;
+  }
+  function kids(node) {
+    return Array.prototype.filter.call(node.childNodes || [], function (ch) {
+      if (/^__sim_/.test(ch.id || '')) return false;
+      /* script / style 也保留：它们在 DOM 里是真实节点（DevTools 同样显示），
+         只是不展开内部源码，见 walk 里对这两个标签的处理 */
+      if (ch.nodeType === 3) return !!(ch.nodeValue || '').trim();
+      return ch.nodeType === 1;
+    });
+  }
+  function walk(node, depth, path, forceLv) {
+    var onChain = !!(forcedSet && forcedSet[path]);
+    var forced = forceLv > 0 || onChain;
+    if (!forced && (count++ > MAXN || depth > MAXD)) return null;
+    if (node.nodeType === 3) return { t: 'text', x: (node.nodeValue || '').trim().slice(0, 70) };
+    var o = { t: 'el', tag: node.tagName.toLowerCase(), id: node.id || '', cls: cls(node).trim().slice(0, 60), path: path, kids: [] };
+    /* inline style 也带进树里：节点行直接看得到 style="..."，和 DevTools 一致 */
+    var st = '';
+    try { st = node.getAttribute ? (node.getAttribute('style') || '') : ''; } catch (e) {}
+    st = st.replace(/\s+/g, ' ').trim();
+    if (st) o.st = st.slice(0, 80);
+    /* 其余属性摘要：meta 的 charset/content、link 的 rel/href、script 的 type…
+       这些名字不在 id/class/style/src 里，不带上就会显示成光秃秃的 <meta /> */
+    var ext = [], extLow = [];
+    Array.prototype.forEach.call(node.attributes || [], function (a) {
+      var n = a.name;
+      if (n === 'id' || n === 'class' || n === 'style' || n === 'src') return;
+      if (n.slice(0, 6) === '__sim_') return;
+      var v = String(a.value == null ? '' : a.value).replace(/\s+/g, ' ').trim();
+      if (v.length > 44) v = v.slice(0, 44) + '…';
+      var item = v ? n + '="' + v + '"' : n;
+      /* data-* / aria-* 数量多且对判断元素没什么帮助，排在后面 */
+      if (n.indexOf('data-') === 0 || n.indexOf('aria-') === 0) extLow.push(item);
+      else ext.push(item);
+    });
+    ext = ext.concat(extLow);
+    if (ext.length) {
+      o.ext = ext.slice(0, 3).join(' ');
+      if (ext.length > 3) o.extMore = ext.length - 3;
+    }
+    /* 图片类元素带上地址，树里直接可见（无需展开详情） */
+    if (/^(IMG|PICTURE|SOURCE|VIDEO|SVG|CANVAS)$/.test(node.tagName)) {
+      var s = node.getAttribute('src') || node.getAttribute('srcset') || node.getAttribute('data-src') || '';
+      if (s) o.src = s.trim().slice(0, 110);
+      var alt = node.getAttribute('alt');
+      if (alt) o.alt = alt.slice(0, 40);
+    }
+    /* script / link 等其它带 src 的元素：src 被 ext 跳过，这里补上，否则行里看不到地址 */
+    if (!o.src) {
+      var gsrc = '';
+      try { gsrc = node.getAttribute ? (node.getAttribute('src') || '') : ''; } catch (e) {}
+      if (gsrc) o.src = String(gsrc).trim().slice(0, 110);
+    }
+    /* iframe / frame：src 常是脚本动态设置的（甚至用 srcdoc、about:blank 写内容），
+       单看 getAttribute('src') 会显示为空，这里逐级兜底 */
+    if (/^(IFRAME|FRAME)$/.test(node.tagName)) {
+      var fsrc = node.getAttribute('src') || '';
+      if (!fsrc) {
+        var sd = node.getAttribute('srcdoc');
+        if (sd) fsrc = 'srcdoc: ' + sd.replace(/\s+/g, ' ').trim().slice(0, 80);
+      }
+      if (!fsrc) {
+        try { fsrc = node.contentDocument ? (node.contentDocument.URL || 'about:blank') : (node.src || ''); } catch (e) {}
+      }
+      if (fsrc && fsrc !== 'about:blank') o.src = String(fsrc).slice(0, 110);
+      else if (!fsrc) o.src = 'about:blank';
+    }
+    /* 目标元素自身及其下 3 层子节点不占采样配额：保证选中的元素能看到自己的内容
+       （img / 文本 / 内部结构），而不是只剩一个空壳 div */
+    var nextLv = forceLv > 0 ? forceLv - 1 : (onChain ? 3 : 0);
+    /* script / style 只显示节点本身：内部是一大段源码，展开没有意义（DevTools 也不展开） */
+    var kk = /^(SCRIPT|STYLE)$/.test(node.tagName) ? [] : kids(node);
+    if (!forced) kk = kk.slice(0, 60);
+    /* 跨 frame 前缀（'#f >> '）：id 选择器会重置文档内路径，但不能丢掉 frame 前缀 */
+    var framePrefix = '';
+    var cut = path.lastIndexOf(' >> ');
+    if (cut >= 0) framePrefix = path.slice(0, cut + 4);
+    /* ti = 该元素第几个「非空文本子节点」：双击文字改内容时按它回取节点，
+       过滤规则必须与页面侧 __simTextNode 一致（只看 trim 后非空的文本节点） */
+    var ti = 0;
+    kk.forEach(function (ch) {
+      if (ch.nodeType === 3) {
+        o.kids.push({ t: 'text', x: (ch.nodeValue || '').trim().slice(0, 70), ti: ti, len: (ch.nodeValue || '').length });
+        ti++;
+        return;
+      }
+      var csel = childSel(ch);
+      var kp = csel.charAt(0) === '#' ? (framePrefix + csel) : path + ' > ' + csel;
+      var k = walk(ch, depth + 1, kp, nextLv);
+      if (k) o.kids.push(k);
+    });
+    /* iframe 的内容是独立文档，不在 childNodes 里：从 contentDocument 进入，
+       路径用 ' >> ' 标记跨 frame；跨域时 contentDocument 为 null，标记不可读 */
+    if (/^(IFRAME|FRAME)$/.test(node.tagName) && depth < MAXD) {
+      var fdoc = null;
+      try { fdoc = node.contentDocument; } catch (e) {}
+      if (fdoc && fdoc.documentElement) {
+        var froot = walk(fdoc.documentElement, depth + 1, path + ' >> html', nextLv);
+        if (froot) o.kids.push(froot); else o.more = 1;
+      } else {
+        o.frameBlocked = 1;
+      }
+    }
+    if (!o.kids.length) {
+      delete o.kids;
+      /* 有真实子元素但被采样上限/深度截断：标记 more，UI 显示 + 号，展开时按需补取 */
+      if (depth < MAXD && kk.some(function (c) { return c.nodeType === 1; })) o.more = 1;
+    }
+    return o;
+  }
+  return JSON.stringify(walk(document.documentElement, 0, 'html', 0));
+})()
+</script>
+
+<script type="text/plain" id="tplDetail">
+(function () {
+  var path = __PATH_JSON__;
+  var el = null;
+  try { el = (typeof __simResolve === 'function') ? __simResolve(path) : document.querySelector(path); } catch (e) {}
+  if (!el || el.nodeType !== 1) return null;
+  return JSON.stringify(__simDetail(el));
+})()
+</script>
+
+<script type="text/plain" id="tplTextNode">
+(function () {
+  /* 文本节点读写：path = 父元素路径，req = { ti, op, value }
+     ti 是「父元素第 ti 个非空文本子节点」，过滤规则与树采样时的 kids() 完全一致 */
+  var path = __PATH_JSON__;
+  var req = __OPS_JSON__ || {};
+  var el = null;
+  try { el = (typeof __simResolve === 'function') ? __simResolve(path) : document.querySelector(path); } catch (e) {}
+  if (!el || el.nodeType !== 1) return JSON.stringify({ ok: false, error: '父元素已不存在（页面可能已更新）' });
+  function texts() {
+    return Array.prototype.filter.call(el.childNodes || [], function (n) {
+      return n.nodeType === 3 && !!(n.nodeValue || '').trim();
+    });
+  }
+  var nodes = texts();
+  var node = nodes[req.ti] || null;
+
+  if (req.op === 'remove') {
+    if (!node) return JSON.stringify({ ok: false, error: '文本节点已不存在' });
+    var oldVal = node.nodeValue;
+    node.remove();
+    return JSON.stringify({ ok: true, removed: true, text: oldVal });
+  }
+  if (req.op === 'set') {
+    if (!node) return JSON.stringify({ ok: false, error: '文本节点已不存在（页面可能已更新）' });
+    /* 原样写入，不 trim：用户可能要靠首尾空格控制排版 */
+    node.nodeValue = req.value == null ? '' : String(req.value);
+    return JSON.stringify({ ok: true, text: node.nodeValue });
+  }
+  return JSON.stringify({ ok: true, text: node ? node.nodeValue : null, count: nodes.length });
+})()
+</script>
+
+<script type="text/plain" id="tplRemoveNode">
+(function () {
+  /* 查看器右键「删除元素」：__simResolve 支持 ' >> ' 跨 iframe 路径，
+     iframe 文档里的节点同样按路径解析后删除 */
+  var path = __PATH_JSON__;
+  var el = null;
+  try { el = (typeof __simResolve === 'function') ? __simResolve(path) : document.querySelector(path); } catch (e) {}
+  if (!el || el.nodeType !== 1) return JSON.stringify({ ok: false, error: '元素已不存在（页面可能已更新）' });
+  var tag = el.tagName.toLowerCase();
+  /* 删掉根元素后文档再无可遍历的 DOM，查看器与选取都无法恢复（只能刷新页面） */
+  if (/^(html|head|body)$/.test(tag)) return JSON.stringify({ ok: false, error: '不能删除文档根元素 <' + tag + '>' });
+  if (!el.parentNode) return JSON.stringify({ ok: false, error: '元素没有父节点，无法删除' });
+  try { el.parentNode.removeChild(el); } catch (e2) {
+    return JSON.stringify({ ok: false, error: '删除失败：' + (e2 && e2.message) });
+  }
+  return JSON.stringify({ ok: true, tag: tag });
+})()
+</script>
+
+<script type="text/plain" id="tplSetAttrs">
+(function () {
+  /* 属性增删改：ops = [{ op:'set', name, value }, { op:'remove', name }]
+     按顺序执行，改完把最新快照和新路径一起回传（改 id / class 后旧路径会失效） */
+  var path = __PATH_JSON__;
+  var ops = __OPS_JSON__;
+  var el = null;
+  try { el = (typeof __simResolve === 'function') ? __simResolve(path) : document.querySelector(path); } catch (e) {}
+  if (!el || el.nodeType !== 1) return JSON.stringify({ ok: false, error: '元素已不存在（页面可能已更新）' });
+  var applied = [], failed = [], cssApplied = [], cssBad = [];
+  (ops || []).forEach(function (op) {
+    if (!op || !op.name) return;
+    try {
+      /* border / color / font-size 这类名字：写成 HTML 属性不会生效（<p border="..."> 就是这种情况），
+         同步写进 inline style，页面上才真的看得出变化 */
+      var isCss = (typeof __simIsCss === 'function') && __simIsCss(el, op.name);
+      var cname = isCss ? (op.name.indexOf('--') === 0 ? op.name : __simCssName(op.name)) : '';
+      if (op.op === 'remove') {
+        if (isCss) { try { el.style.removeProperty(cname); } catch (e) {} }
+        el.removeAttribute(op.name);
+        applied.push('-' + op.name);
+      } else {
+        var val = op.value == null ? '' : String(op.value);
+        if (isCss) {
+          /* 值不合法：不写 style 也不写 attribute，保留原样并把问题回传给 UI，
+             免得 HTML 里留下一个看起来正确、实际无效的 border="abcdef" */
+          if (val && !__simCssValid(el, cname, val)) { cssBad.push(op.name + '=' + val); return; }
+          if (!val) {
+            el.style.removeProperty(cname);
+            el.removeAttribute(op.name);
+            cssApplied.push(cname + ': (已清空)');
+            return;
+          }
+          el.style.setProperty(cname, val);
+          cssApplied.push(cname + ': ' + el.style.getPropertyValue(cname));
+        }
+        el.setAttribute(op.name, val);
+        applied.push(op.name);
+      }
+    } catch (e) {
+      failed.push(op.name + '：' + (e && e.message ? e.message : '属性名非法'));
+    }
+  });
+  /* 新路径：保留跨 frame 前缀（'#f >> ' 部分），只重算元素所在文档内的那一段 */
+  var framePrefix = '';
+  var cut = path.lastIndexOf(' >> ');
+  if (cut >= 0) framePrefix = path.slice(0, cut + 4);
+  var newPath = path;
+  try {
+    var inner = (typeof __simPathOf === 'function') ? __simPathOf(el) : path;
+    newPath = framePrefix + inner;
+  } catch (e) {}
+  var detail = null;
+  try { detail = __simDetail(el); } catch (e) {}
+  return JSON.stringify({ ok: true, applied: applied, failed: failed, cssApplied: cssApplied, cssBad: cssBad, path: newPath, detail: detail });
+})()
+</script>
+
+<script type="text/plain" id="tplInspect">
+(function () {
+  /* 进入选取只保留悬停框：清掉查看器点击留下的橙色选中框，避免两个高亮叠加 */
+  var sb = document.getElementById('__sim_sel_box');
+  if (sb) sb.remove();
+  if (window.__simInspect) {
+    /* 复用已有监听：必须清掉上一轮的选中结果，否则重新进入选取会立刻被旧结果命中 */
+    window.__simInspect.active = true;
+    window.__simInspect.selected = null;
+    window.__simInspect.path = null;
+    window.__simInspect.hoverPath = null;
+    window.__simInspect.hoverSnapshot = null;
+    window.__simInspect.snapshot = null;
+    return 'already';
+  }
+  var st = window.__simInspect = { active: true, selected: null, path: null, hoverPath: null, hoverSnapshot: null, snapshot: null };
+  function mkBox(color, bg) {
+    var d = document.createElement('div');
+    d.id = '__sim_box_' + Math.random().toString(36).slice(2, 8);
+    d.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483646;display:none;border:2px solid ' + color + ';background:' + bg + ';border-radius:3px;transition:all .05s linear;';
+    document.body.appendChild(d);
+    return d;
+  }
+  /* 只有悬停高亮框：选取过程不需要点击高亮；框若被页面/清理移除则自动重建 */
+  function getBox() {
+    var b = window.__simHoverBox;
+    if (!b || !b.parentNode) {
+      b = mkBox('#2f88ff', 'rgba(47,136,255,.15)');
+      window.__simHoverBox = b;
+    }
+    return b;
+  }
+  function place(b, el) {
+    var r = el.getBoundingClientRect();
+    b.style.display = 'block';
+    b.style.top = r.top + 'px'; b.style.left = r.left + 'px';
+    b.style.width = Math.max(r.width, 2) + 'px'; b.style.height = Math.max(r.height, 2) + 'px';
+  }
+  var lastMove = 0;
+  /* 用 mousemove（比 mouseover 更可靠）：悬停任意位置都会触发；节流 60ms */
+  document.addEventListener('mousemove', function (e) {
+    if (!st.active) return;
+    var t = e.target;
+    if (!t || t.nodeType !== 1 || /^__sim_/.test(t.id || '')) return;
+    var now = Date.now();
+    if (now - lastMove < 60) return;
+    lastMove = now;
+    place(getBox(), t);
+    try {
+      st.hoverPath = __simPathOf(t);
+      /* 悬停即抓取详情：查看器右侧实时显示该元素属性，无需点击 */
+      st.hoverSnapshot = __simDetail(t);
+    } catch (err) {}
+  }, true);
+  document.addEventListener('click', function (e) {
+    if (!st.active) return;
+    e.preventDefault(); e.stopPropagation();
+    st.path = __simPathOf(e.target);
+    st.selected = {
+      tag: e.target.tagName.toLowerCase(),
+      cls: (typeof e.target.className === 'string' ? e.target.className : '').trim().slice(0, 60),
+      text: (e.target.textContent || '').trim().slice(0, 80)
+    };
+    /* 点击瞬间同步抓取详情快照（含 img 的 src / 尺寸）：
+       动态页面里等 180ms 轮询再按路径找元素，元素可能已被重建 */
+    try { st.snapshot = __simDetail(e.target); } catch (err) { st.snapshot = null; }
+    st.active = false;
+    setTimeout(function () { var b = window.__simHoverBox; if (b) b.style.display = 'none'; }, 80);
+    return false;
+  }, true);
+  return 'started';
+})()
+</script>
+
+<script type="text/plain" id="tplPoll">
+(function () {
+  var s = window.__simInspect;
+  return JSON.stringify({
+    active: !!(s && s.active),
+    selected: s ? s.selected : null,
+    path: s ? s.path : null,
+    hoverPath: s ? (s.hoverPath || null) : null,
+    hoverSnapshot: s ? (s.hoverSnapshot || null) : null,
+    snapshot: s ? (s.snapshot || null) : null
+  });
+})()
+</script>
+
+<script type="text/plain" id="tplStop">
+(function () {
+  /* 隐藏所有高亮（悬停框保留复用；橙色选中框一并清掉，避免退出后还留在页面上） */
+  document.querySelectorAll('[id^="__sim_box_"]').forEach(function (n) { n.style.display = 'none'; });
+  var sb = document.getElementById('__sim_sel_box');
+  if (sb) sb.remove();
+  if (window.__simInspect) {
+    window.__simInspect.active = false;
+    window.__simInspect.selected = null;
+    window.__simInspect.path = null;
+    window.__simInspect.hoverPath = null;
+    window.__simInspect.hoverSnapshot = null;
+    window.__simInspect.snapshot = null;
+  }
+  return 'stopped';
+})()
+</script>
+
+<script type="text/plain" id="tplChildren">
+(function () {
+  /* 按需取某元素的直接子级（懒加载）：默认树有 800 节点采样上限，深层元素会成空壳 */
+  var basePath = __PATH_JSON__;
+  var root = null;
+  try { root = (typeof __simResolve === 'function') ? __simResolve(basePath) : document.querySelector(basePath); } catch (e) {}
+  if (!root || root.nodeType !== 1) return 'null';
+  function cls(el) { return typeof el.className === 'string' ? el.className : ''; }
+  function childSel(el) {
+    if (el.id && /^[A-Za-z][\w-]*$/.test(el.id) && !/^__sim_/.test(el.id)) return '#' + CSS.escape(el.id);
+    var sel = el.tagName.toLowerCase();
+    var cs = cls(el).trim().split(/\s+/).filter(Boolean).slice(0, 2);
+    if (cs.length) sel += cs.map(function (x) { return '.' + CSS.escape(x); }).join('');
+    var p = el.parentElement;
+    if (p) {
+      var same = Array.prototype.filter.call(p.children, function (ch) { return ch.tagName === el.tagName; });
+      if (same.length > 1) sel += ':nth-of-type(' + (same.indexOf(el) + 1) + ')';
+    }
+    return sel;
+  }
+  function kids(node) {
+    return Array.prototype.filter.call(node.childNodes || [], function (ch) {
+      if (/^__sim_/.test(ch.id || '')) return false;
+      if (ch.nodeType === 3) return !!(ch.nodeValue || '').trim();
+      return ch.nodeType === 1;
+    });
+  }
+  var out = [];
+  /* iframe 自身：内容在独立文档里，先给一个 html 占位节点，点开后再逐层补取 */
+  if (/^(IFRAME|FRAME)$/.test(root.tagName)) {
+    var rdoc = null;
+    try { rdoc = root.contentDocument; } catch (e) {}
+    if (rdoc && rdoc.documentElement) {
+      out.push({ t: 'el', tag: 'html', path: basePath + ' >> html', more: 1 });
+    } else {
+      out.push({ t: 'text', x: '(跨域 iframe，内容不可读取)' });
+    }
+  }
+  /* 跨 frame 前缀：id 选择器重置路径时不能把 '#f >> ' 丢掉 */
+  var framePrefix = '';
+  var cutIdx = basePath.lastIndexOf(' >> ');
+  if (cutIdx >= 0) framePrefix = basePath.slice(0, cutIdx + 4);
+  var ti = 0;
+  kids(root).forEach(function (ch) {
+    if (ch.nodeType === 3) {
+      out.push({ t: 'text', x: (ch.nodeValue || '').trim().slice(0, 70), ti: ti, len: (ch.nodeValue || '').length });
+      ti++;
+      return;
+    }
+    var csel = childSel(ch);
+    var kp = csel.charAt(0) === '#' ? (framePrefix + csel) : basePath + ' > ' + csel;
+    var o = { t: 'el', tag: ch.tagName.toLowerCase(), id: ch.id || '', cls: cls(ch).trim().slice(0, 60), path: kp };
+    var cst = (ch.getAttribute && ch.getAttribute('style') || '').replace(/\s+/g, ' ').trim();
+    if (cst) o.st = cst.slice(0, 80);
+    /* 其余属性摘要，与 walk() 保持一致（meta / link / script 的属性才看得到） */
+    var cext = [], cextLow = [];
+    Array.prototype.forEach.call(ch.attributes || [], function (a) {
+      var n = a.name;
+      if (n === 'id' || n === 'class' || n === 'style' || n === 'src') return;
+      if (n.slice(0, 6) === '__sim_') return;
+      var v = String(a.value == null ? '' : a.value).replace(/\s+/g, ' ').trim();
+      if (v.length > 44) v = v.slice(0, 44) + '…';
+      var item = v ? n + '="' + v + '"' : n;
+      if (n.indexOf('data-') === 0 || n.indexOf('aria-') === 0) cextLow.push(item);
+      else cext.push(item);
+    });
+    cext = cext.concat(cextLow);
+    if (cext.length) {
+      o.ext = cext.slice(0, 3).join(' ');
+      if (cext.length > 3) o.extMore = cext.length - 3;
+    }
+    if (/^(IMG|PICTURE|SOURCE|VIDEO|SVG|CANVAS)$/.test(ch.tagName)) {
+      var s = ch.getAttribute('src') || ch.getAttribute('srcset') || ch.getAttribute('data-src') || '';
+      if (s) o.src = s.trim().slice(0, 110);
+      var alt = ch.getAttribute('alt');
+      if (alt) o.alt = alt.slice(0, 40);
+    }
+    /* script / link 等带 src 的元素：ext 里跳过了 src，这里补上 */
+    if (!o.src) {
+      var gsrc2 = (ch.getAttribute && ch.getAttribute('src')) || '';
+      if (gsrc2) o.src = String(gsrc2).trim().slice(0, 110);
+    }
+    if (/^(IFRAME|FRAME)$/.test(ch.tagName)) {
+      var fsrc = ch.getAttribute('src') || '';
+      if (!fsrc) {
+        var sd = ch.getAttribute('srcdoc');
+        if (sd) fsrc = 'srcdoc: ' + sd.replace(/\s+/g, ' ').trim().slice(0, 80);
+      }
+      var cdoc = null;
+      try { cdoc = ch.contentDocument; } catch (e) {}
+      if (!fsrc) fsrc = cdoc ? (cdoc.URL || 'about:blank') : '';
+      if (fsrc) o.src = String(fsrc).slice(0, 110);
+      if (cdoc && cdoc.documentElement) o.more = 1; else o.frameBlocked = 1;
+    } else if (kids(ch).some(function (k) { return k.nodeType === 1; })) {
+      o.more = 1;
+    }
+    out.push(o);
+  });
+  return JSON.stringify(out);
+})()
+</script>
+
+<script type="text/plain" id="tplHighlight">
+(function () {
+  var path = __PATH_JSON__;
+  var chain = null;
+  try { chain = (typeof __simFrameChain === 'function') ? __simFrameChain(path) : null; } catch (e) { chain = null; }
+  var el = chain ? chain.el : null;
+  if (!el) { try { el = document.querySelector(path); } catch (e) {} }
+  /* 只清掉上一次的选中框，绝不动选取模式的悬停框（否则页面上会同时出现两个高亮） */
+  var old = document.getElementById('__sim_sel_box');
+  if (old) old.remove();
+  if (!el || el.nodeType !== 1) return 'notfound';
+  /* 从查看器点击节点时，页面同步滚动到该元素（居中），再取最终位置画框。
+     iframe 内的元素要先让外层 frame 进入视口，再滚 frame 内部 */
+  try {
+    var frames = (chain && chain.frames) || [];
+    for (var i = 0; i < frames.length; i++) {
+      try { frames[i].scrollIntoView({ block: 'center', behavior: 'auto' }); } catch (e) {}
+    }
+    el.scrollIntoView({ block: 'center', behavior: 'auto' });
+  } catch (e) { try { el.scrollIntoView(); } catch (e2) {} }
+  var d = document.createElement('div');
+  d.id = '__sim_sel_box';
+  d.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483646;border:2px solid #ff9f45;background:rgba(255,159,69,.15);border-radius:3px;';
+  /* fixed + 滚动/尺寸变化时重新对齐：框始终贴着元素，滚动后也不会停在旧位置 */
+  function sync() {
+    if (!el.isConnected) { d.remove(); return; }
+    /* iframe 内元素用绝对（跨 frame 累加）坐标，否则框会画错位置 */
+    var r = (typeof __simAbsRect === 'function') ? __simAbsRect(el) : el.getBoundingClientRect();
+    if (!r.width && !r.height) { d.style.display = 'none'; return; }
+    d.style.display = 'block';
+    d.style.top = r.top + 'px'; d.style.left = r.left + 'px';
+    d.style.width = Math.max(r.width, 2) + 'px'; d.style.height = Math.max(r.height, 2) + 'px';
+  }
+  if (window.__simSelSync) {
+    window.removeEventListener('scroll', window.__simSelSync, true);
+    window.removeEventListener('resize', window.__simSelSync, true);
+  }
+  window.__simSelSync = sync;
+  window.addEventListener('scroll', sync, true);
+  window.addEventListener('resize', sync, true);
+  document.body.appendChild(d);
+  sync();
+  return 'ok';
+})()
+</script>
+
+<script src="app.js"></script>
+</body>
+</html>
