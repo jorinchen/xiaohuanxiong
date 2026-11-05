@@ -55,10 +55,10 @@ npm run dist          # 打包 Windows x64 安装包
 在仓库 `Settings → Secrets and variables → Actions` 添加：
 
 - `SIGNPATH_API_TOKEN`
-- `SIGNPATH_ORGANIZATION_ID`
-- `SIGNPATH_PROJECT_ID`
+- `SIGNPATH_ORGANIZATION_ID`（组织 GUID）
+- `SIGNPATH_PROJECT_SLUG`（创建项目时填的 Slug，不是 GUID）
 
-（可选 `SIGNPATH_SIGNING_POLICY`，默认 `release-signing`）
+（可选 `SIGNPATH_SIGNING_POLICY`，默认 `release-signing`；`SIGNPATH_ARTIFACT_CONFIG` 指定 artifact configuration slug）
 
 ## 发布流程（CI 自动构建 + 签名 + 发版）
 
