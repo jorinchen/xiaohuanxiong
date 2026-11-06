@@ -27,28 +27,19 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         run: node scripts/set-version.js ${{ github.ref_name }}
 
-      # 本地签名：把 CSC_LINK（PFX 的 base64）解码为真实文件 sign.pfx，
-      # 再经 $GITHUB_ENV 把 CSC_LINK / WIN_CSC_LINK 指向该路径（electron-builder 原生 CSC 签名）。
-      # 未配置 CSC_LINK 时跳过此步，回退到 SignPath（afterSign/postdist 钩子会自动判断）。
-      - name: 准备本地签名证书
-        if: ${{ secrets.CSC_LINK != '' }}
-        shell: pwsh
-        env:
-          CSC_PFX_B64: ${{ secrets.CSC_LINK }}
-        run: |
-          $bytes = [Convert]::FromBase64String($env:CSC_PFX_B64)
-          $pfx = Join-Path $env:GITHUB_WORKSPACE "sign.pfx"
-          [IO.File]::WriteAllBytes($pfx, $bytes)
-          Add-Content -Path $env:GITHUB_ENV -Value "CSC_LINK=$pfx"
-          Add-Content -Path $env:GITHUB_ENV -Value "WIN_CSC_LINK=$pfx"
-
       # npm run dist 会：
       #   predist   -> 自动 +1 版本号（tag 构建时因 SKIP_BUMP=1 跳过）
-      #   electron-builder -> 打包（afterSign 钩子给 PcAsMobile.exe 签名）
+      #   electron-builder -> 打包；若配置了本地 PFX（CSC_B64=PFX 的 base64）则解码为 sign.pfx，
+      #                      用原生 CSC 签名主程序与安装包；否则 afterSign/postdist 钩子走 SignPath
       #   postdist  -> 给 setup.exe 签名
-      # 签名通过 SignPath 完成，凭据来自仓库 Secrets（未配置则出未签名包）。
-      - name: Build & Sign with SignPath
-        run: npm run dist
+      - name: Build & Sign
+        run: |
+          if not "%CSC_B64%"=="" (
+            powershell -NoProfile -Command "$b=[Convert]::FromBase64String($env:CSC_B64); [IO.File]::WriteAllBytes('sign.pfx',$b)"
+            set CSC_LINK=%CD%\sign.pfx
+            set WIN_CSC_LINK=%CD%\sign.pfx
+          )
+          npm run dist
         env:
           SKIP_BUMP: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
@@ -57,8 +48,9 @@ jobs:
           SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
           SIGNPATH_PROJECT_SLUG: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
           SIGNPATH_SIGNING_POLICY: test-xiaohuanxiong
-          # 本地签名（绕开 SignPath）：CSC_LINK / WIN_CSC_LINK 由“准备本地签名证书”步骤注入为
-          # sign.pfx 文件路径；此处只需提供导出密码。afterSign/postdist 钩子检测到 CSC_LINK 会自动跳过 SignPath
+          # 本地签名（绕开 SignPath）：CSC_B64 = PFX 的 base64；步骤内解码为 sign.pfx 并设 CSC_LINK/WIN_CSC_LINK。
+          # afterSign/postdist 钩子检测到 CSC_LINK 会自动跳过 SignPath。
+          CSC_B64: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           # 可选：若 SignPath 项目要求指定 artifact configuration 的 slug，设此项
           # SIGNPATH_ARTIFACT_CONFIG: executable
