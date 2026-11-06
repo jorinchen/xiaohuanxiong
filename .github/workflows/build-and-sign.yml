@@ -1,8 +1,8 @@
-name: Build and Sign (SignPath)
+name: Build and Release
 
 on:
   push:
-    tags: ['v*']          # 打 tag 如 v1.0.6 时自动构建、签名并发布 Release
+    tags: ['v*']          # 打 tag 如 v1.0.6 时自动构建并发布 Release
   workflow_dispatch:      # 也支持手动触发（出未带 Release 的 artifact）
 
 # 创建 Release 需要写仓库内容的权限
@@ -30,12 +30,12 @@ jobs:
       # npm run dist 会：
       #   predist   -> 自动 +1 版本号（tag 构建时因 SKIP_BUMP=1 跳过）
       #   electron-builder -> 打包；若配置了本地 PFX（CSC_B64=PFX 的 base64）则解码为 sign.pfx，
-      #                      用原生 CSC 签名主程序与安装包；否则 afterSign/postdist 钩子走 SignPath
-      #   postdist  -> 给 setup.exe 签名
+      #                      用原生 CSC 签名主程序与安装包（afterSign/postdist 钩子检测到后跳过）
+      #   postdist  -> 安装包签名检查
       - name: Build & Sign
         run: |
           if ($env:CSC_B64) {
-            $b = [Convert]::FromBase64String($env:CSC_B64)
+            $b = [Convert]::FromBase64String($env:CSC_B64.Trim())
             $p = Join-Path $env:GITHUB_WORKSPACE "sign.pfx"
             [IO.File]::WriteAllBytes($p, $b)
             $env:CSC_LINK = $p
@@ -46,18 +46,12 @@ jobs:
           SKIP_BUMP: ${{ startsWith(github.ref, 'refs/tags/v') && '1' || '' }}
           ELECTRON_MIRROR: https://npmmirror.com/mirrors/electron/
           ELECTRON_BUILDER_BINARIES_MIRROR: https://npmmirror.com/mirrors/electron-builder-binaries/
-          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
-          SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
-          SIGNPATH_PROJECT_SLUG: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
-          SIGNPATH_SIGNING_POLICY: test-xiaohuanxiong
-          # 本地签名（绕开 SignPath）：CSC_B64 = PFX 的 base64；步骤内解码为 sign.pfx 并设 CSC_LINK/WIN_CSC_LINK。
-          # afterSign/postdist 钩子检测到 CSC_LINK 会自动跳过 SignPath。
+          # 本地自签名（不依赖任何外部签名服务）：CSC_B64 = PFX 的 base64；步骤内解码为 sign.pfx 并设 CSC_LINK/WIN_CSC_LINK。
+          # 不设置 CSC_LINK / CSC_KEY_PASSWORD 时出未签名包。
           CSC_B64: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          # 可选：若 SignPath 项目要求指定 artifact configuration 的 slug，设此项
-          # SIGNPATH_ARTIFACT_CONFIG: executable
 
-      # tag 构建：自动创建 GitHub Release 并上传已签名的安装包
+      # tag 构建：自动创建 GitHub Release 并上传安装包
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2

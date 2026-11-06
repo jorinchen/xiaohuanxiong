@@ -1,34 +1,20 @@
 /**
- * electron-builder afterSign 钩子：
- * 在生成 NSIS 安装包之前，把解包目录里的主程序 PcAsMobile.exe 先用 SignPath 签名，
- * 这样安装后运行的 exe 也是已签名的，首次打开不会报未知发布者。
+ * electron-builder afterSign 钩子。
  *
- * 未设置 SIGNPATH_API_TOKEN 时会自动跳过（本地构建仍正常出未签名包）。
+ * 当配置了本地 PFX（环境变量 CSC_LINK 指向 .pfx 文件）时，主程序 PcAsMobile.exe
+ * 已由 electron-builder 用原生 CSC 签名（windows-sign / signtool），本钩子无需再处理。
+ * 未配置 CSC_LINK 时直接跳过（出未签名包）。
  *
  * @param {{ appOutDir: string }} context
  */
-const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
 
 function runSign(target) {
-  /* 本地签名优先：设置了 CSC_LINK（PFX）时，主程序与安装包统一交给
-     electron-builder 原生 CSC 签名，本钩子与 postdist 都跳过 SignPath（避免重复签名） */
-  if (process.env.CSC_LINK) {
-    console.log('[sign] 检测到 CSC_LINK，主程序交由 electron-builder 本地签名（跳过 SignPath）。');
+  if (!process.env.CSC_LINK) {
+    console.log('[sign] 未设置 CSC_LINK，跳过主程序签名（出未签名包）。');
     return;
   }
-  if (!process.env.SIGNPATH_API_TOKEN) {
-    console.log('[signpath] 未设置 SIGNPATH_API_TOKEN，跳过签名（本地构建）。');
-    return;
-  }
-  if (!fs.existsSync(target)) {
-    console.log('[signpath] 跳过：找不到 ' + target);
-    return;
-  }
-  const signer = path.join(__dirname, 'sign-signpath.js');
-  console.log('[signpath] 签名主程序: ' + target);
-  execFileSync('node', [signer, '--path', target], { stdio: 'inherit' });
+  console.log('[sign] 主程序已交由 electron-builder 本地 CSC 签名: ' + target);
 }
 
 async function afterSign(context) {

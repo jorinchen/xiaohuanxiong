@@ -1,31 +1,19 @@
 /**
- * postdist 步骤：安装包 setup.exe 生成后，用 SignPath 对其签名。
- * 未设置 SIGNPATH_API_TOKEN 时跳过（本地构建出未签名包）。
+ * postdist 步骤：安装包 setup.exe 生成后检查签名来源。
+ *
+ * 当配置了本地 PFX（CSC_LINK）时，setup.exe 已由 electron-builder 用原生 CSC 签名，
+ * 此处直接跳过（避免重复处理）。未配置时同样跳过（出未签名包）。
  */
+const setup = require('path').join(__dirname, '..', 'dist', 'setup.exe');
 const fs = require('fs');
-const path = require('path');
-const { execFileSync } = require('child_process');
 
-const setup = path.join(__dirname, '..', 'dist', 'setup.exe');
 if (!fs.existsSync(setup)) {
   console.error('找不到 dist/setup.exe，请先运行 npm run dist');
   process.exit(1);
 }
 
 if (process.env.CSC_LINK) {
-  console.log('[sign] 检测到 CSC_LINK，安装包由 electron-builder 本地签名（跳过 SignPath）。');
-  process.exit(0);
-}
-if (!process.env.SIGNPATH_API_TOKEN) {
-  console.log('[signpath] 未设置 SIGNPATH_API_TOKEN，跳过 setup.exe 签名（本地构建）。');
-  process.exit(0);
-}
-
-const signer = path.join(__dirname, 'sign-signpath.js');
-console.log('[signpath] 签名安装包: ' + setup);
-try {
-  execFileSync('node', [signer, '--path', setup], { stdio: 'inherit' });
-} catch (e) {
-  console.error('SignPath 签名失败');
-  process.exit(1);
+  console.log('[sign] 安装包由 electron-builder 本地 CSC 签名，postdist 跳过。');
+} else {
+  console.log('[sign] 未设置 CSC_LINK，setup.exe 未签名（出未签名包）。');
 }
