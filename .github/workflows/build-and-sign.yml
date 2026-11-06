@@ -42,6 +42,10 @@ jobs:
           SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
           SIGNPATH_PROJECT_SLUG: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
           SIGNPATH_SIGNING_POLICY: test-xiaohuanxiong
+          # 本地签名（绕开 SignPath）：设置 CSC_LINK（PFX 的 base64）与 CSC_KEY_PASSWORD 后，
+          # electron-builder 用原生 CSC 签名主程序与安装包，上面的 SignPath 钩子会自动跳过
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           # 可选：若 SignPath 项目要求指定 artifact configuration 的 slug，设此项
           # SIGNPATH_ARTIFACT_CONFIG: executable
 

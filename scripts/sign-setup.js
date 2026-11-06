@@ -12,6 +12,10 @@ if (!fs.existsSync(setup)) {
   process.exit(1);
 }
 
+if (process.env.CSC_LINK) {
+  console.log('[sign] 检测到 CSC_LINK，安装包由 electron-builder 本地签名（跳过 SignPath）。');
+  process.exit(0);
+}
 if (!process.env.SIGNPATH_API_TOKEN) {
   console.log('[signpath] 未设置 SIGNPATH_API_TOKEN，跳过 setup.exe 签名（本地构建）。');
   process.exit(0);

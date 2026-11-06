@@ -12,6 +12,12 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 function runSign(target) {
+  /* 本地签名优先：设置了 CSC_LINK（PFX）时，主程序与安装包统一交给
+     electron-builder 原生 CSC 签名，本钩子与 postdist 都跳过 SignPath（避免重复签名） */
+  if (process.env.CSC_LINK) {
+    console.log('[sign] 检测到 CSC_LINK，主程序交由 electron-builder 本地签名（跳过 SignPath）。');
+    return;
+  }
   if (!process.env.SIGNPATH_API_TOKEN) {
     console.log('[signpath] 未设置 SIGNPATH_API_TOKEN，跳过签名（本地构建）。');
     return;
