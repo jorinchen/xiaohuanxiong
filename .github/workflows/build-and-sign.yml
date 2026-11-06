@@ -41,7 +41,7 @@ jobs:
           SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
           SIGNPATH_ORGANIZATION_ID: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
           SIGNPATH_PROJECT_SLUG: ${{ secrets.SIGNPATH_PROJECT_SLUG }}
-          SIGNPATH_SIGNING_POLICY: xiaohuanxiong
+          SIGNPATH_SIGNING_POLICY: release-signing
           # 可选：若 SignPath 项目要求指定 artifact configuration 的 slug，设此项
           # SIGNPATH_ARTIFACT_CONFIG: executable
 
