@@ -1495,6 +1495,126 @@ async function clearPageCache() {
 ipcMain.handle('clear-cookies', () => clearPageCookies());
 ipcMain.handle('clear-cache', () => clearPageCache());
 
+/* ============ 收藏夹 / UI 设置持久化 ============
+   浏览器 UI 由 http://127.0.0.1:<随机端口>/index.html 提供，端口每次启动都变，
+   localStorage 的 origin 跟着变，收藏等数据重启后就会"消失"。
+
+   收藏网址按要求存到 <安装目录>\Favorites\favorites.json
+   （默认安装位置 D:\Program Files\RaccoonQuant\Browser\PcAsMobile）；
+   同时在 userData\Favorites\favorites.json 留一份同步备份：安装目录若被
+   系统保护（Program Files 且未提权）导致写失败，收藏仍不会丢。
+   解锁密码 / 界面布局等其它设置继续存 userData\ui-settings.json。 */
+const FAVORITES_KEY = 'ps.bookmarks';
+let uiSettings = null;
+let favoritesWarned = false;
+
+function uiSettingsFile() {
+  return path.join(app.getPath('userData'), 'ui-settings.json');
+}
+function getUiSettings() {
+  if (!uiSettings) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(uiSettingsFile(), 'utf8'));
+      uiSettings = (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : {};
+    } catch (e) {
+      uiSettings = {};
+    }
+  }
+  return uiSettings;
+}
+function saveUiSettings() {
+  try {
+    fs.mkdirSync(app.getPath('userData'), { recursive: true });
+    fs.writeFileSync(uiSettingsFile(), JSON.stringify(getUiSettings(), null, 2), 'utf8');
+  } catch (e) {
+    console.error('[小浣熊] UI 设置保存失败：', e);
+  }
+}
+
+function installDir() {
+  /* 打包后 exe 所在目录就是安装目录（也兼容 /D= 自定义位置）；
+     源码调试时以项目根目录代替，方便直接查看 Favorites */
+  return app.isPackaged ? path.dirname(app.getPath('exe')) : ROOT;
+}
+function favoritesPaths() {
+  return [
+    path.join(installDir(), 'Favorites', 'favorites.json'),
+    path.join(app.getPath('userData'), 'Favorites', 'favorites.json')
+  ];
+}
+function readFavoritesFile(file) {
+  try {
+    const text = fs.readFileSync(file, 'utf8');
+    return Array.isArray(JSON.parse(text)) ? text : null;
+  } catch (e) { return null; }
+}
+function writeFavoritesFile(file, text) {
+  let tmp = '';
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    let body = text;
+    try { body = JSON.stringify(JSON.parse(text), null, 2); } catch (e) {}
+    tmp = file + '.tmp';
+    fs.writeFileSync(tmp, body, 'utf8');
+    fs.renameSync(tmp, file);
+    return true;
+  } catch (e) {
+    try { if (tmp) fs.unlinkSync(tmp); } catch (e2) {}
+    return false;
+  }
+}
+function getFavoritesRaw() {
+  const paths = favoritesPaths();
+  for (const file of paths) {
+    const text = readFavoritesFile(file);
+    if (text !== null) return text;
+  }
+  /* 兼容上一版：收藏曾与其它设置一起存在 userData\ui-settings.json */
+  const all = getUiSettings();
+  if (typeof all[FAVORITES_KEY] === 'string') {
+    const legacy = all[FAVORITES_KEY];
+    delete all[FAVORITES_KEY];
+    saveUiSettings();
+    setFavoritesRaw(legacy);
+    return legacy;
+  }
+  return null;
+}
+function setFavoritesRaw(text) {
+  const paths = favoritesPaths();
+  const written = paths.map((file) => writeFavoritesFile(file, text));
+  if (!written[0] && !favoritesWarned) {
+    favoritesWarned = true;
+    console.warn('[小浣熊] 安装目录不可写，收藏已保存到备份位置：' + paths[1]);
+  }
+  if (!written.some(Boolean)) {
+    const all = getUiSettings();
+    all[FAVORITES_KEY] = text;
+    saveUiSettings();
+    console.error('[小浣熊] 收藏文件写入失败，已临时写入 ui-settings.json');
+  }
+  return written.some(Boolean);
+}
+
+/* 读写都用同步 IPC：收藏后立即关闭窗口也能保证数据已落盘 */
+ipcMain.on('ui-setting-get', (event, key) => {
+  if (key === FAVORITES_KEY) { event.returnValue = getFavoritesRaw(); return; }
+  const all = getUiSettings();
+  event.returnValue = (typeof key === 'string' && Object.prototype.hasOwnProperty.call(all, key)) ? all[key] : null;
+});
+ipcMain.on('ui-setting-set', (event, payload) => {
+  event.returnValue = true;
+  const key = payload && payload.key;
+  const value = payload && payload.value;
+  if (typeof key !== 'string' || !key || typeof value !== 'string') return;
+  if (key === FAVORITES_KEY) { setFavoritesRaw(value); return; }
+  const all = getUiSettings();
+  if (all[key] !== value) {
+    all[key] = value;
+    saveUiSettings();
+  }
+});
+
 /* ============ IPC ============ */
 ipcMain.handle('page-navigate', (_e, url) => {
   if (!pageView || !/^https?:/i.test(String(url || ''))) return false;

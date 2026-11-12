@@ -9,6 +9,10 @@ const on = (channel) => (callback) => {
 contextBridge.exposeInMainWorld('phoneSimDesktop', {
   isDesktop: true,
 
+  /* UI 设置持久化：主进程 userData，不受本地服务随机端口影响 */
+  getUiSetting: (key) => ipcRenderer.sendSync('ui-setting-get', key),
+  setUiSetting: (key, value) => ipcRenderer.sendSync('ui-setting-set', { key, value }),
+
   /* 菜单与窗口状态 */
   onMenuAction: on('menu-action'),
   onFullscreenChanged: on('fullscreen-changed'),

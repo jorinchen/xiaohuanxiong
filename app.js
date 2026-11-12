@@ -22,21 +22,54 @@
   const DEFAULT_DEVICE = DEVICE_DATA.defaults || {};
   const KERNEL_ORDER = DEVICE_DATA.kernels || ['ios', 'android', 'harmony'];
 
+  /* 设置统一由主进程保存：收藏网址在 <安装目录>\Favorites\favorites.json，
+     解锁密码 / 界面布局等在 userData\ui-settings.json。
+     内置静态服务每次启动都使用随机端口，浏览器 UI 的 localStorage origin
+     也随之变化，不能再依赖它保存数据。文件里没有记录时，
+     自动把旧版本残留在 localStorage 的值迁移进来。 */
+  const hasSettingStore = typeof desktop.getUiSetting === 'function' && typeof desktop.setUiSetting === 'function';
+  function readSetting(key) {
+    if (hasSettingStore) {
+      try {
+        const saved = desktop.getUiSetting(key);
+        if (typeof saved === 'string') return saved;
+        const legacy = localStorage.getItem(key);
+        if (legacy !== null) { desktop.setUiSetting(key, legacy); return legacy; }
+        return null;
+      } catch (e) {}
+    }
+    try { return localStorage.getItem(key); } catch (e) { return null; }
+  }
+  function writeSetting(key, raw) {
+    if (hasSettingStore) {
+      try { desktop.setUiSetting(key, raw); } catch (e) {}
+    }
+    try { localStorage.setItem(key, raw); } catch (e) {}
+  }
   const store = {
     get(key, fallback) {
-      try { const raw = localStorage.getItem(key); return raw === null ? fallback : JSON.parse(raw); }
-      catch (e) { return fallback; }
+      const raw = readSetting(key);
+      if (raw === null) return fallback;
+      try { return JSON.parse(raw); } catch (e) { return fallback; }
     },
-    set(key, value) {
-      try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
-    }
+    set(key, value) { writeSetting(key, JSON.stringify(value)); }
   };
 
-  const DEFAULT_BOOKMARKS = [
-    { title: '小浣熊起始页', url: 'demo://home' },
-    { title: '应用商店', url: 'demo://store' },
-    { title: '技术文章 · 移动内核演进', url: 'demo://article' }
-  ];
+  /* 早期版本内置的三个演示收藏已移除；旧数据里若还残留则一次性清掉，
+     之后用户主动收藏这些网址仍会正常保留 */
+  const LEGACY_DEMO_URLS = new Set(['demo://home', 'demo://store', 'demo://article']);
+  function loadBookmarks() {
+    let saved = store.get('ps.bookmarks', []);
+    if (!Array.isArray(saved)) saved = [];
+    if (!store.get('ps-bookmarks-cleaned-v1', false)) {
+      const cleaned = saved.filter((b) => b && !LEGACY_DEMO_URLS.has(String(b.url)));
+      /* 首次启动也写一次（哪怕是空列表），确保安装目录下立即生成 Favorites\favorites.json */
+      store.set('ps.bookmarks', cleaned);
+      store.set('ps-bookmarks-cleaned-v1', true);
+      saved = cleaned;
+    }
+    return saved;
+  }
 
   const state = {
     /* 内核 / 机型 / 视口 / 缩放跟着标签走，初值由主进程 tab-env 校正 */
@@ -56,10 +89,7 @@
     viewportMode: 'phone',
     pageZoom: 1,
     password: String(store.get('ps.password', '123456')),
-    bookmarks: (function () {
-      const saved = store.get('ps.bookmarks', DEFAULT_BOOKMARKS);
-      return Array.isArray(saved) ? saved : DEFAULT_BOOKMARKS.slice();
-    })(),
+    bookmarks: loadBookmarks(),
     displayUrl: 'https://www.baidu.com',
     title: '百度一下，你就知道',
     lastPageUrl: '',
@@ -96,18 +126,13 @@
     /* 首次按 F12 默认停靠在**右侧**（不遮挡页面纵向空间）；用户手动切换后记住选择。
        key 换成 v2：旧的 bottom 记录不再生效，避免之前选过底部的机器回不到默认值 */
     dtDock: (function () {
-      try {
-        const v = localStorage.getItem('ps-dt-dock-v2');
-        return v === 'bottom' ? 'bottom' : 'right';
-      } catch (e) { return 'right'; }
+      return readSetting('ps-dt-dock-v2') === 'bottom' ? 'bottom' : 'right';
     })(),
     /* 默认尺寸：0 = 未设置，打开时按工作区宽度自适应（右侧停靠取 57%，即截图里红框的比例）；
        用户拖过或切过停靠后记住具体像素值，不再自适应 */
     dtSize: (function () {
-      try {
-        const v = Number(localStorage.getItem('ps-dt-size-v4'));
-        return v > 0 ? v : 0;
-      } catch (e) { return 0; }
+      const v = Number(readSetting('ps-dt-size-v4'));
+      return v > 0 ? v : 0;
     })(),
     /* 当前 DevTools 数据归属的标签页 id */
     devTabId: 0
@@ -313,7 +338,7 @@
     return deviceFor(state.kernel, state.device) || deviceFor('ios', DEFAULT_DEVICE.ios);
   }
   function saveDeviceChoice() {
-    try { localStorage.setItem('ps-device-by-kernel', JSON.stringify(state.deviceByKernel)); } catch (e) {}
+    writeSetting('ps-device-by-kernel', JSON.stringify(state.deviceByKernel));
   }
 
   function updateKernelUI() {
@@ -576,7 +601,7 @@
     /* 方向换了尺寸含义也变了（宽度 ↔ 高度），重置后按新方向的默认比例重算 */
     state.dtSize = 0;
     state.dtDock = state.dtDock === 'bottom' ? 'right' : 'bottom';
-    try { localStorage.setItem('ps-dt-dock-v2', state.dtDock); } catch (e) {}
+    writeSetting('ps-dt-dock-v2', state.dtDock);
     applyDockLayout();
     sendLayout();
     pushLog('system', 'DevTools 已停靠到' + (state.dtDock === 'right' ? '右侧' : '底部'));
@@ -604,7 +629,7 @@
   window.addEventListener('mouseup', () => {
     if (!dtDragging) return;
     dtDragging = false;
-    try { localStorage.setItem('ps-dt-size-v4', String(state.dtSize)); } catch (e) {}
+    writeSetting('ps-dt-size-v4', String(state.dtSize));
     sendLayout();
   });
 

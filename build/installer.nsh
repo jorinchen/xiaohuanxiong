@@ -15,3 +15,11 @@
     ${EndIf}
   ${EndIf}
 !macroend
+
+; ===== 收藏目录 =====
+; 安装时创建 Favorites 并允许普通用户写入（安装目录常位于 Program Files），
+; 否则运行时收藏只能退回 userData 下的备份位置。
+!macro customInstall
+  CreateDirectory "$INSTDIR\Favorites"
+  ExecWait '"$SYSDIR\icacls.exe" "$INSTDIR\Favorites" /grant *S-1-5-32-545:(OI)(CI)M /T /C /Q' $0
+!macroend
